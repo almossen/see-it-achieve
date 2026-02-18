@@ -28,6 +28,12 @@ import DriverLayout from "./layouts/DriverLayout";
 import DriverHome from "./pages/driver/DriverHome";
 import DriverOrderProcess from "./pages/driver/DriverOrderProcess";
 import DriverCompleted from "./pages/driver/DriverCompleted";
+import MemberLayout from "./layouts/MemberLayout";
+import MemberHome from "./pages/member/MemberHome";
+import RecipesPage from "./pages/member/RecipesPage";
+import MemberCart from "./pages/member/MemberCart";
+import MemberOrders from "./pages/member/MemberOrders";
+import MemberProfile from "./pages/member/MemberProfile";
 
 const queryClient = new QueryClient();
 
@@ -59,6 +65,13 @@ const App = () => (
                   <Route path="favorites" element={<ElderFavorites />} />
                   <Route path="cart" element={<ElderCart />} />
                   <Route path="orders" element={<ElderOrders />} />
+                </Route>
+                <Route path="/member" element={<MemberLayout />}>
+                  <Route index element={<MemberHome />} />
+                  <Route path="recipes" element={<RecipesPage />} />
+                  <Route path="cart" element={<MemberCart />} />
+                  <Route path="orders" element={<MemberOrders />} />
+                  <Route path="profile" element={<MemberProfile />} />
                 </Route>
                 <Route path="/driver" element={<DriverLayout />}>
                   <Route index element={<DriverHome />} />

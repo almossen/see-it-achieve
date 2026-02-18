@@ -27,12 +27,14 @@ const Login = () => {
       // Fetch role to redirect appropriately
       const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", data.user.id);
       const userRoles = roles?.map((r: any) => r.role) || [];
-      if (userRoles.includes("driver")) {
+      if (userRoles.includes("admin")) {
+        navigate("/admin");
+      } else if (userRoles.includes("driver")) {
         navigate("/driver");
       } else if (userRoles.includes("elder")) {
         navigate("/elder");
       } else {
-        navigate("/admin");
+        navigate("/member");
       }
     }
   };
