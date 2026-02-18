@@ -47,23 +47,48 @@ const ProductQuantityDrawer = ({
 }: ProductQuantityDrawerProps) => {
   const [selectedUnit, setSelectedUnit] = useState(currentUnit);
   const [qty, setQty] = useState(currentQty || 1);
+  const [unitQuantities, setUnitQuantities] = useState<Record<string, number>>({});
 
   // Reset when product changes
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen && product) {
-      setSelectedUnit(currentUnit || product.unit || "حبة");
+      const defaultUnit = currentUnit || product.unit || "حبة";
+      setSelectedUnit(defaultUnit);
       setQty(currentQty || 1);
+      // Initialize with default unit having the quantity
+      setUnitQuantities({ [defaultUnit]: currentQty || 1 });
     }
     if (!isOpen) onClose();
   };
 
   if (!product) return null;
 
+  const handleUnitQtyChange = (unit: string, delta: number) => {
+    setUnitQuantities((prev) => {
+      const current = prev[unit] || 0;
+      const next = Math.max(0, current + delta);
+      const updated = { ...prev };
+      if (next === 0) {
+        delete updated[unit];
+      } else {
+        updated[unit] = next;
+      }
+      // Update selected unit to the last changed one
+      if (next > 0) setSelectedUnit(unit);
+      // Update total qty
+      const total = Object.values(updated).reduce((s, v) => s + v, 0);
+      setQty(total || 1);
+      return updated;
+    });
+  };
+
   const handleConfirm = () => {
+    const totalQty = Object.values(unitQuantities).reduce((s, v) => s + v, 0);
+    if (totalQty === 0) return;
     if (currentQty > 0) {
-      onUpdateQty(qty);
+      onUpdateQty(totalQty);
     } else {
-      onAdd(selectedUnit, qty);
+      onAdd(selectedUnit, totalQty);
     }
     onClose();
   };
@@ -93,68 +118,73 @@ const ProductQuantityDrawer = ({
         </DrawerHeader>
 
         <div className="px-4 pb-6 space-y-6">
-          {/* Unit selection - large emoji grid */}
+          {/* Unit selection with inline quantity */}
           <div>
             <p className="text-center text-sm text-muted-foreground font-bold mb-3">
-              اختر الوحدة
+              اختر الوحدة والكمية
             </p>
-            <div className="grid grid-cols-3 gap-3">
-              {UNIT_OPTIONS.map((u) => (
-                <button
-                  key={u.value}
-                  onClick={() => setSelectedUnit(u.value)}
-                  className={cn(
-                    "flex flex-col items-center gap-2 p-4 rounded-2xl transition-all border-3",
-                    selectedUnit === u.value
-                      ? "bg-primary/15 border-primary shadow-md scale-105"
-                      : "bg-muted/50 border-transparent"
-                  )}
-                >
-                  <span className="text-[40px]">{u.emoji}</span>
-                  <span className="text-base font-bold">{u.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+            <div className="space-y-2">
+              {UNIT_OPTIONS.map((u) => {
+                const unitQty = unitQuantities[u.value] || 0;
+                const isActive = unitQty > 0;
+                return (
+                  <div
+                    key={u.value}
+                    className={cn(
+                      "flex items-center justify-between p-3 rounded-2xl transition-all border-2",
+                      isActive
+                        ? "bg-primary/10 border-primary"
+                        : "bg-muted/50 border-transparent"
+                    )}
+                  >
+                    {/* Unit label */}
+                    <div className="flex items-center gap-3">
+                      <span className="text-[32px]">{u.emoji}</span>
+                      <span className="text-lg font-bold">{u.label}</span>
+                    </div>
 
-          {/* Quantity selector - very large */}
-          <div>
-            <p className="text-center text-sm text-muted-foreground font-bold mb-3">
-              الكمية
-            </p>
-            <div className="flex items-center justify-center gap-6">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-16 w-16 rounded-2xl text-2xl"
-                onClick={() => setQty(Math.max(1, qty - 1))}
-                disabled={qty <= 1}
-              >
-                <Minus className="h-8 w-8" />
-              </Button>
-              <span className="text-5xl font-bold min-w-[80px] text-center">
-                {qty}
-              </span>
-              <Button
-                size="icon"
-                className="h-16 w-16 rounded-2xl text-2xl"
-                onClick={() => setQty(qty + 1)}
-              >
-                <Plus className="h-8 w-8" />
-              </Button>
+                    {/* Counter */}
+                    <div className="flex items-center gap-3">
+                      {isActive && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-11 w-11 rounded-xl"
+                          onClick={() => handleUnitQtyChange(u.value, -1)}
+                        >
+                          <Minus className="h-5 w-5" />
+                        </Button>
+                      )}
+                      {isActive && (
+                        <span className="text-2xl font-bold min-w-[32px] text-center">
+                          {unitQty}
+                        </span>
+                      )}
+                      <Button
+                        size="icon"
+                        className={cn(
+                          "h-11 w-11 rounded-xl",
+                          !isActive && "bg-muted text-foreground hover:bg-primary hover:text-primary-foreground"
+                        )}
+                        onClick={() => handleUnitQtyChange(u.value, 1)}
+                      >
+                        <Plus className="h-5 w-5" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <p className="text-center text-lg text-muted-foreground mt-2">
-              {qty} {selectedUnit}
-            </p>
           </div>
 
           {/* Confirm button */}
           <Button
             onClick={handleConfirm}
+            disabled={Object.values(unitQuantities).reduce((s, v) => s + v, 0) === 0}
             className="w-full h-16 text-xl rounded-2xl gap-3"
           >
             <ShoppingCart className="h-7 w-7" />
-            {currentQty > 0 ? "تحديث الكمية" : `أضف ${qty} ${selectedUnit}`}
+            {currentQty > 0 ? "تحديث الكمية" : "أضف للسلة"}
           </Button>
         </div>
       </DrawerContent>
