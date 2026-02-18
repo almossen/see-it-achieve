@@ -9,6 +9,7 @@ import { Heart, Plus, Minus, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import UnitPicker from "@/components/elder/UnitPicker";
 
 const ElderCategory = () => {
   const { categoryId } = useParams();
@@ -18,6 +19,7 @@ const ElderCategory = () => {
   const [products, setProducts] = useState<any[]>([]);
   const [category, setCategory] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [unitPickerProduct, setUnitPickerProduct] = useState<any>(null);
 
   useEffect(() => {
     if (!tenantId || !categoryId) return;
@@ -42,15 +44,21 @@ const ElderCategory = () => {
     return items.find((i) => i.product_id === productId)?.quantity || 0;
   };
 
-  const handleAdd = (product: any) => {
+  const handleAddWithUnit = (product: any) => {
+    setUnitPickerProduct(product);
+  };
+
+  const handleUnitSelected = (unit: string) => {
+    if (!unitPickerProduct) return;
     addItem({
-      product_id: product.id,
-      name: product.name_ar,
-      emoji: product.emoji,
-      price: product.price,
-      unit: product.unit,
+      product_id: unitPickerProduct.id,
+      name: unitPickerProduct.name_ar,
+      emoji: unitPickerProduct.emoji,
+      price: unitPickerProduct.price,
+      unit,
     });
-    toast.success(`تمت إضافة ${product.name_ar}`);
+    toast.success(`تمت إضافة ${unitPickerProduct.name_ar} (${unit})`);
+    setUnitPickerProduct(null);
   };
 
   if (loading) {
@@ -120,7 +128,7 @@ const ElderCategory = () => {
               {/* Add/Quantity controls */}
               {qty === 0 ? (
                 <Button
-                  onClick={() => handleAdd(product)}
+                  onClick={() => handleAddWithUnit(product)}
                   size="sm"
                   className="w-full h-11 text-base rounded-xl gap-1"
                 >
@@ -154,6 +162,14 @@ const ElderCategory = () => {
 
       {products.length === 0 && (
         <p className="text-center text-muted-foreground py-12 text-lg">لا توجد منتجات في هذا القسم</p>
+      )}
+
+      {unitPickerProduct && (
+        <UnitPicker
+          productName={unitPickerProduct.name_ar}
+          onSelect={handleUnitSelected}
+          onClose={() => setUnitPickerProduct(null)}
+        />
       )}
     </div>
   );
