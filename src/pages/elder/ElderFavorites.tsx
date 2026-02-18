@@ -74,7 +74,11 @@ const ElderFavorites = () => {
               transition={{ delay: i * 0.05 }}
               className="bg-card border border-border rounded-2xl p-4 flex flex-col items-center"
             >
-              <span className="text-[48px] mb-2">{product.emoji || "📦"}</span>
+              {product.image_url ? (
+                <img src={product.image_url} alt={product.name_ar} className="w-20 h-20 object-cover rounded-xl mb-2" />
+              ) : (
+                <span className="text-[48px] mb-2">{product.emoji || "📦"}</span>
+              )}
               <p className="text-sm font-bold text-center mb-1">{product.name_ar}</p>
               {product.price && (
                 <p className="text-xs text-primary font-bold mb-3">{product.price} ر.س</p>
