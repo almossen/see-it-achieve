@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Drawer,
@@ -49,15 +49,17 @@ const ProductQuantityDrawer = ({
   const [qty, setQty] = useState(currentQty || 1);
   const [unitQuantities, setUnitQuantities] = useState<Record<string, number>>({});
 
-  // Reset when product changes
-  const handleOpenChange = (isOpen: boolean) => {
-    if (isOpen && product) {
+  // Reset state when product changes
+  useEffect(() => {
+    if (open && product) {
       const defaultUnit = currentUnit || product.unit || "حبة";
       setSelectedUnit(defaultUnit);
       setQty(currentQty || 1);
-      // Initialize with default unit having the quantity
-      setUnitQuantities({ [defaultUnit]: currentQty || 1 });
+      setUnitQuantities(currentQty > 0 ? { [defaultUnit]: currentQty } : {});
     }
+  }, [open, product?.id]);
+
+  const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) onClose();
   };
 
