@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search, Camera, ImagePlus, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Camera, ImagePlus, X, Sparkles, Loader2 } from "lucide-react";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -28,6 +28,7 @@ const ProductsPage = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [recognizing, setRecognizing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,6 +56,34 @@ const ProductsPage = () => {
     return `${SUPABASE_URL}/storage/v1/object/public/product-images/${fileName}`;
   };
 
+  const recognizeProduct = async (base64: string) => {
+    setRecognizing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("recognize-product", {
+        body: { imageBase64: base64 },
+      });
+      if (error) throw error;
+      if (data?.product) {
+        const p = data.product;
+        setForm((prev) => ({
+          ...prev,
+          name_ar: p.name_ar || prev.name_ar,
+          name_en: p.name_en || prev.name_en,
+          emoji: p.emoji || prev.emoji,
+          category_id: p.category
+            ? categories.find((c) => c.name_ar === p.category)?.id || prev.category_id
+            : prev.category_id,
+        }));
+        toast.success("تم التعرف على المنتج", { description: p.name_ar });
+      }
+    } catch (e) {
+      console.error("AI recognition error:", e);
+      toast.error("لم يتمكن الذكاء الاصطناعي من التعرف على المنتج");
+    } finally {
+      setRecognizing(false);
+    }
+  };
+
   const handleImageSelect = (file: File | null) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
@@ -63,7 +92,12 @@ const ProductsPage = () => {
     }
     setImageFile(file);
     const reader = new FileReader();
-    reader.onload = (e) => setImagePreview(e.target?.result as string);
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      setImagePreview(base64);
+      // Trigger AI recognition automatically
+      recognizeProduct(base64);
+    };
     reader.readAsDataURL(file);
   };
 
@@ -235,6 +269,12 @@ const ProductsPage = () => {
                       alt="معاينة"
                       className="w-full h-40 object-cover rounded-lg border border-border"
                     />
+                    {recognizing && (
+                      <div className="absolute inset-0 bg-background/70 rounded-lg flex items-center justify-center gap-2">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        <span className="text-sm font-medium text-primary">جاري التعرف بالذكاء الاصطناعي...</span>
+                      </div>
+                    )}
                     <Button
                       type="button"
                       variant="destructive"
@@ -244,6 +284,20 @@ const ProductsPage = () => {
                     >
                       <X className="h-4 w-4" />
                     </Button>
+                    {!recognizing && (
+                      <div className="absolute bottom-2 right-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="gap-1 h-7 text-xs"
+                          onClick={() => recognizeProduct(imagePreview)}
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          تعرّف مجدداً
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex gap-2">
