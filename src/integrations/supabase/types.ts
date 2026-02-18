@@ -19,6 +19,7 @@ export type Database = {
           created_at: string
           emoji: string | null
           id: string
+          image_url: string | null
           is_active: boolean | null
           name_ar: string
           name_en: string | null
@@ -29,6 +30,7 @@ export type Database = {
           created_at?: string
           emoji?: string | null
           id?: string
+          image_url?: string | null
           is_active?: boolean | null
           name_ar: string
           name_en?: string | null
@@ -39,6 +41,7 @@ export type Database = {
           created_at?: string
           emoji?: string | null
           id?: string
+          image_url?: string | null
           is_active?: boolean | null
           name_ar?: string
           name_en?: string | null
