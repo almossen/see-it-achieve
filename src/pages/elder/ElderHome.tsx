@@ -135,7 +135,11 @@ const ProductQuickCard = ({ product }: { product: any }) => {
       }
       className="flex-shrink-0 w-28 bg-card border border-border rounded-xl p-3 text-center space-y-1"
     >
-      <span className="text-3xl block">{product.emoji || "📦"}</span>
+      {product.image_url ? (
+        <img src={product.image_url} alt={product.name_ar} className="w-12 h-12 object-cover rounded-lg" />
+      ) : (
+        <span className="text-3xl block">{product.emoji || "📦"}</span>
+      )}
       <p className="text-xs font-medium truncate">{product.name_ar}</p>
       {product.price && (
         <p className="text-xs text-primary font-bold">{product.price} ر.س</p>
