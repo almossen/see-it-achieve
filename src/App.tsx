@@ -24,6 +24,10 @@ import ElderCategory from "./pages/elder/ElderCategory";
 import ElderFavorites from "./pages/elder/ElderFavorites";
 import ElderCart from "./pages/elder/ElderCart";
 import ElderOrders from "./pages/elder/ElderOrders";
+import DriverLayout from "./layouts/DriverLayout";
+import DriverHome from "./pages/driver/DriverHome";
+import DriverOrderProcess from "./pages/driver/DriverOrderProcess";
+import DriverCompleted from "./pages/driver/DriverCompleted";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +59,11 @@ const App = () => (
                   <Route path="favorites" element={<ElderFavorites />} />
                   <Route path="cart" element={<ElderCart />} />
                   <Route path="orders" element={<ElderOrders />} />
+                </Route>
+                <Route path="/driver" element={<DriverLayout />}>
+                  <Route index element={<DriverHome />} />
+                  <Route path="order/:orderId" element={<DriverOrderProcess />} />
+                  <Route path="completed" element={<DriverCompleted />} />
                 </Route>
                 <Route path="/dashboard" element={<AdminLayout />}>
                   <Route index element={<AdminOverview />} />
