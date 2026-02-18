@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search, Camera, ImagePlus, X, Sparkles, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Camera, ImagePlus, X, Sparkles, Loader2, Languages } from "lucide-react";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -31,6 +31,24 @@ const ProductsPage = () => {
   const [recognizing, setRecognizing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [translating, setTranslating] = useState(false);
+
+  const translateName = async (arabicName: string) => {
+    if (!arabicName.trim() || form.name_en) return;
+    setTranslating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("translate-product", {
+        body: { text: arabicName, from: "Arabic", to: "English" },
+      });
+      if (!error && data?.translated) {
+        setForm((prev) => ({ ...prev, name_en: data.translated }));
+      }
+    } catch (e) {
+      console.error("Translation error:", e);
+    } finally {
+      setTranslating(false);
+    }
+  };
 
   const fetchData = async () => {
     if (!tenantId) return;
@@ -202,11 +220,26 @@ const ProductsPage = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>الاسم بالعربية</Label>
-                  <Input value={form.name_ar} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} required />
+                  <Input
+                    value={form.name_ar}
+                    onChange={(e) => setForm({ ...form, name_ar: e.target.value })}
+                    onBlur={(e) => translateName(e.target.value)}
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>الاسم بالإنجليزية</Label>
-                  <Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} dir="ltr" />
+                  <Label className="flex items-center gap-1">
+                    الاسم بالإنجليزية
+                    {translating && <Loader2 className="h-3 w-3 animate-spin" />}
+                  </Label>
+                  <div className="relative">
+                    <Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} dir="ltr" placeholder={translating ? "جاري الترجمة..." : ""} />
+                    {form.name_ar && !form.name_en && !translating && (
+                      <Button type="button" variant="ghost" size="icon" className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7" onClick={() => translateName(form.name_ar)}>
+                        <Languages className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-4">
