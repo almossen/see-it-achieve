@@ -18,13 +18,22 @@ const Login = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       toast.error("خطأ في تسجيل الدخول", { description: error.message });
     } else {
       toast.success("تم تسجيل الدخول بنجاح");
-      navigate("/admin");
+      // Fetch role to redirect appropriately
+      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", data.user.id);
+      const userRoles = roles?.map((r: any) => r.role) || [];
+      if (userRoles.includes("driver")) {
+        navigate("/driver");
+      } else if (userRoles.includes("elder")) {
+        navigate("/elder");
+      } else {
+        navigate("/admin");
+      }
     }
   };
 
