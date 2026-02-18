@@ -75,7 +75,7 @@ const ElderFavorites = () => {
               className="bg-card border border-border rounded-2xl p-4 flex flex-col items-center"
             >
               {product.image_url ? (
-                <img src={product.image_url} alt={product.name_ar} className="w-20 h-20 object-cover rounded-xl mb-2" />
+                <img src={product.image_url} alt={product.name_ar} className="w-20 h-20 object-contain rounded-xl mb-2" />
               ) : (
                 <span className="text-[48px] mb-2">{product.emoji || "📦"}</span>
               )}

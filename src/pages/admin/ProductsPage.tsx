@@ -391,7 +391,7 @@ const ProductsPage = () => {
           <Card key={product.id}>
             <CardContent className="p-4 text-center space-y-2">
               {product.image_url ? (
-                <img src={product.image_url} alt={product.name_ar} className="w-full h-24 object-cover rounded-lg mb-2" />
+                <img src={product.image_url} alt={product.name_ar} className="w-full h-32 object-contain rounded-lg mb-2" />
               ) : (
                 <div className="text-4xl mb-2">{product.emoji || "📦"}</div>
               )}
