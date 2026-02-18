@@ -15,6 +15,7 @@ const UNIT_OPTIONS = [
   { value: "كرتون", emoji: "📦" },
   { value: "درزن", emoji: "🥚" },
   { value: "كيلو", emoji: "⚖️" },
+  { value: "كيس", emoji: "🛍️" },
   { value: "حزمة", emoji: "🌿" },
 ];
 
