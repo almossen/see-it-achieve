@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, GripVertical, Pencil, Trash2 } from "lucide-react";
+import { Plus, GripVertical, Pencil, Trash2, Camera, ImagePlus, X } from "lucide-react";
 
 const defaultCategories = [
   { name_ar: "خضروات", name_en: "Vegetables", emoji: "🥬" },
@@ -29,6 +29,11 @@ const CategoriesPage = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name_ar: "", name_en: "", emoji: "🛒" });
   const [submitting, setSubmitting] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const fetchCategories = async () => {
     if (!tenantId) return;
@@ -59,17 +64,54 @@ const CategoriesPage = () => {
     }
   };
 
+  const handleImageSelect = (file: File) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("حجم الصورة كبير جداً (الحد الأقصى 5 ميجابايت)");
+      return;
+    }
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setImagePreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${tenantId}/categories/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("product-images").upload(path, file);
+    if (error) {
+      toast.error("خطأ في رفع الصورة", { description: error.message });
+      return null;
+    }
+    const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(path);
+    return urlData.publicUrl;
+  };
+
+  const clearImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    setExistingImageUrl(null);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
 
+    let image_url = existingImageUrl;
+    if (imageFile) {
+      const uploaded = await uploadImage(imageFile);
+      if (uploaded) image_url = uploaded;
+    }
+
+    const payload = { ...form, image_url };
+
     if (editingId) {
-      const { error } = await supabase.from("categories").update(form).eq("id", editingId);
+      const { error } = await supabase.from("categories").update(payload).eq("id", editingId);
       if (error) toast.error("خطأ", { description: error.message });
       else toast.success("تم التحديث");
     } else {
       const { error } = await supabase.from("categories").insert({
-        ...form,
+        ...payload,
         tenant_id: tenantId!,
         sort_order: categories.length,
       });
@@ -79,9 +121,16 @@ const CategoriesPage = () => {
 
     setSubmitting(false);
     setDialogOpen(false);
+    resetForm();
+    fetchCategories();
+  };
+
+  const resetForm = () => {
     setEditingId(null);
     setForm({ name_ar: "", name_en: "", emoji: "🛒" });
-    fetchCategories();
+    setImageFile(null);
+    setImagePreview(null);
+    setExistingImageUrl(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -101,6 +150,9 @@ const CategoriesPage = () => {
   const openEdit = (cat: any) => {
     setEditingId(cat.id);
     setForm({ name_ar: cat.name_ar, name_en: cat.name_en || "", emoji: cat.emoji || "🛒" });
+    setExistingImageUrl(cat.image_url || null);
+    setImagePreview(cat.image_url || null);
+    setImageFile(null);
     setDialogOpen(true);
   };
 
@@ -127,7 +179,7 @@ const CategoriesPage = () => {
           )}
           <Dialog open={dialogOpen} onOpenChange={(open) => {
             setDialogOpen(open);
-            if (!open) { setEditingId(null); setForm({ name_ar: "", name_en: "", emoji: "🛒" }); }
+            if (!open) resetForm();
           }}>
             <DialogTrigger asChild>
               <Button className="gap-2"><Plus className="h-4 w-4" />إضافة فئة</Button>
@@ -137,6 +189,30 @@ const CategoriesPage = () => {
                 <DialogTitle>{editingId ? "تعديل الفئة" : "إضافة فئة جديدة"}</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSave} className="space-y-4">
+                {/* Image upload section */}
+                <div className="space-y-2">
+                  <Label>صورة الفئة (اختياري)</Label>
+                  {imagePreview ? (
+                    <div className="relative w-24 h-24 mx-auto">
+                      <img src={imagePreview} alt="معاينة" className="w-24 h-24 object-cover rounded-xl border" />
+                      <button type="button" onClick={clearImage} className="absolute -top-2 -left-2 bg-destructive text-destructive-foreground rounded-full p-1">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 justify-center">
+                      <input type="file" accept="image/*" capture="environment" ref={cameraRef} className="hidden" onChange={(e) => e.target.files?.[0] && handleImageSelect(e.target.files[0])} />
+                      <input type="file" accept="image/*" ref={fileRef} className="hidden" onChange={(e) => e.target.files?.[0] && handleImageSelect(e.target.files[0])} />
+                      <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => cameraRef.current?.click()}>
+                        <Camera className="h-4 w-4" /> كاميرا
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => fileRef.current?.click()}>
+                        <ImagePlus className="h-4 w-4" /> اختيار صورة
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-2">
                   <Label>الرمز التعبيري</Label>
                   <Input value={form.emoji} onChange={(e) => setForm({ ...form, emoji: e.target.value })} className="text-2xl text-center w-20" maxLength={4} />
@@ -163,7 +239,11 @@ const CategoriesPage = () => {
           <Card key={cat.id} className={cat.is_active ? "" : "opacity-50"}>
             <CardContent className="p-4 flex items-center gap-4">
               <GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0 cursor-grab" />
-              <span className="text-2xl flex-shrink-0">{cat.emoji}</span>
+              {cat.image_url ? (
+                <img src={cat.image_url} alt={cat.name_ar} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+              ) : (
+                <span className="text-2xl flex-shrink-0">{cat.emoji}</span>
+              )}
               <div className="flex-1 min-w-0">
                 <p className="font-medium">{cat.name_ar}</p>
                 {cat.name_en && <p className="text-xs text-muted-foreground">{cat.name_en}</p>}
