@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Camera, ImagePlus, X } from "lucide-react";
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 const ProductsPage = () => {
   const { tenantId } = useAuth();
@@ -23,6 +25,11 @@ const ProductsPage = () => {
     name_ar: "", name_en: "", emoji: "", price: "", unit: "حبة", category_id: "",
   });
   const [submitting, setSubmitting] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const fetchData = async () => {
     if (!tenantId) return;
@@ -37,11 +44,41 @@ const ProductsPage = () => {
 
   useEffect(() => { fetchData(); }, [tenantId]);
 
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const ext = file.name.split(".").pop();
+    const fileName = `${tenantId}/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("product-images").upload(fileName, file, { upsert: true });
+    if (error) {
+      toast.error("خطأ في رفع الصورة");
+      return null;
+    }
+    return `${SUPABASE_URL}/storage/v1/object/public/product-images/${fileName}`;
+  };
+
+  const handleImageSelect = (file: File | null) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("حجم الصورة يجب أن يكون أقل من 5 ميجابايت");
+      return;
+    }
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setImagePreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
 
-    const payload = {
+    let imageUrl: string | null = null;
+    if (imageFile) {
+      setUploadingImage(true);
+      imageUrl = await uploadImage(imageFile);
+      setUploadingImage(false);
+    }
+
+    const payload: any = {
       name_ar: form.name_ar,
       name_en: form.name_en || null,
       emoji: form.emoji || null,
@@ -50,6 +87,8 @@ const ProductsPage = () => {
       category_id: form.category_id || null,
       tenant_id: tenantId!,
     };
+
+    if (imageUrl) payload.image_url = imageUrl;
 
     if (editingId) {
       const { tenant_id, ...updatePayload } = payload;
@@ -71,6 +110,8 @@ const ProductsPage = () => {
   const resetForm = () => {
     setEditingId(null);
     setForm({ name_ar: "", name_en: "", emoji: "", price: "", unit: "حبة", category_id: "" });
+    setImageFile(null);
+    setImagePreview(null);
   };
 
   const openEdit = (p: any) => {
@@ -83,6 +124,8 @@ const ProductsPage = () => {
       unit: p.unit || "حبة",
       category_id: p.category_id || "",
     });
+    setImageFile(null);
+    setImagePreview(p.image_url || null);
     setDialogOpen(true);
   };
 
@@ -167,8 +210,66 @@ const ProductsPage = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "جاري الحفظ..." : editingId ? "حفظ التعديلات" : "إضافة المنتج"}
+              {/* Image Upload */}
+              <div className="space-y-2">
+                <Label>صورة المنتج</Label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handleImageSelect(e.target.files?.[0] || null)}
+                />
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => handleImageSelect(e.target.files?.[0] || null)}
+                />
+                {imagePreview ? (
+                  <div className="relative w-full">
+                    <img
+                      src={imagePreview}
+                      alt="معاينة"
+                      className="w-full h-40 object-cover rounded-lg border border-border"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-2 left-2 h-7 w-7"
+                      onClick={() => { setImageFile(null); setImagePreview(null); }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      onClick={() => cameraInputRef.current?.click()}
+                    >
+                      <Camera className="h-4 w-4" />
+                      الكاميرا
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <ImagePlus className="h-4 w-4" />
+                      اختر صورة
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <Button type="submit" className="w-full" disabled={submitting || uploadingImage}>
+                {uploadingImage ? "جاري رفع الصورة..." : submitting ? "جاري الحفظ..." : editingId ? "حفظ التعديلات" : "إضافة المنتج"}
               </Button>
             </form>
           </DialogContent>
@@ -202,7 +303,11 @@ const ProductsPage = () => {
         {filtered.map((product) => (
           <Card key={product.id}>
             <CardContent className="p-4 text-center space-y-2">
-              <div className="text-4xl mb-2">{product.emoji || "📦"}</div>
+              {product.image_url ? (
+                <img src={product.image_url} alt={product.name_ar} className="w-full h-24 object-cover rounded-lg mb-2" />
+              ) : (
+                <div className="text-4xl mb-2">{product.emoji || "📦"}</div>
+              )}
               <p className="font-medium text-sm truncate">{product.name_ar}</p>
               {product.categories && (
                 <p className="text-xs text-muted-foreground">{product.categories.emoji} {product.categories.name_ar}</p>
