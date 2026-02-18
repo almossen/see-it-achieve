@@ -24,7 +24,7 @@ const Login = () => {
       toast.error("خطأ في تسجيل الدخول", { description: error.message });
     } else {
       toast.success("تم تسجيل الدخول بنجاح");
-      navigate("/dashboard");
+      navigate("/admin");
     }
   };
 
