@@ -86,7 +86,7 @@ const ElderCategory = () => {
       </div>
 
       {/* Products - clean simple list */}
-      <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-3">
         {products.map((product, i) => {
           const cartItem = getCartItem(product.id);
           const qty = cartItem?.quantity || 0;
@@ -94,61 +94,57 @@ const ElderCategory = () => {
           return (
             <motion.button
               key={product.id}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: i * 0.03 }}
               onClick={() => setSelectedProduct(product)}
-              className="w-full bg-card border border-border rounded-2xl p-4 flex items-center gap-4 active:scale-[0.98] transition-transform text-right"
+              className="relative bg-card border border-border rounded-2xl p-3 flex flex-col items-center gap-2 active:scale-[0.97] transition-transform text-center aspect-square justify-center"
             >
-              {/* Product emoji/image */}
-              <div className="flex-shrink-0">
-                {product.image_url ? (
-                  <img
-                    src={product.image_url}
-                    alt={product.name_ar}
-                    className="w-14 h-14 object-contain rounded-xl"
-                  />
-                ) : (
-                  <span className="text-[40px] block">
-                    {product.emoji || "📦"}
-                  </span>
-                )}
-              </div>
+              {/* Quantity badge */}
+              {qty > 0 && (
+                <span className="absolute top-2 left-2 bg-primary text-primary-foreground text-sm font-bold rounded-full w-8 h-8 flex items-center justify-center">
+                  {qty}
+                </span>
+              )}
+
+              {/* Favorite */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFavorite(product.id);
+                }}
+                className="absolute top-2 right-2 p-1"
+              >
+                <Heart
+                  className={cn(
+                    "h-5 w-5 transition-colors",
+                    isFavorite(product.id)
+                      ? "fill-red-500 text-red-500"
+                      : "text-muted-foreground"
+                  )}
+                />
+              </button>
+
+              {/* Product image/emoji */}
+              {product.image_url ? (
+                <img
+                  src={product.image_url}
+                  alt={product.name_ar}
+                  className="w-20 h-20 object-contain rounded-xl"
+                />
+              ) : (
+                <span className="text-[48px] block">
+                  {product.emoji || "📦"}
+                </span>
+              )}
 
               {/* Name & price */}
-              <div className="flex-1 min-w-0">
-                <p className="text-lg font-bold truncate">{product.name_ar}</p>
-                {product.price && (
-                  <p className="text-sm text-primary font-bold">
-                    {product.price} ر.س
-                  </p>
-                )}
-              </div>
-
-              {/* Quantity badge or favorite */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {qty > 0 && (
-                  <span className="bg-primary text-primary-foreground text-lg font-bold rounded-full w-10 h-10 flex items-center justify-center">
-                    {qty}
-                  </span>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleFavorite(product.id);
-                  }}
-                  className="p-2"
-                >
-                  <Heart
-                    className={cn(
-                      "h-5 w-5 transition-colors",
-                      isFavorite(product.id)
-                        ? "fill-red-500 text-red-500"
-                        : "text-muted-foreground"
-                    )}
-                  />
-                </button>
-              </div>
+              <p className="text-base font-bold truncate w-full">{product.name_ar}</p>
+              {product.price && (
+                <p className="text-sm text-primary font-bold">
+                  {product.price} ر.س
+                </p>
+              )}
             </motion.button>
           );
         })}
