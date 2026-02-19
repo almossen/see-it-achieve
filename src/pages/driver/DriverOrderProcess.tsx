@@ -13,11 +13,14 @@ type ItemStatus = "pending" | "found" | "not_found" | "substituted";
 interface OrderItem {
   id: string;
   product_name: string;
+  product_id: string | null;
   quantity: number;
   price: number | null;
   status: string | null;
   substitute_image_url: string | null;
   substitute_approved: boolean | null;
+  product_image?: string | null;
+  product_unit?: string | null;
 }
 
 const statusConfig: Record<ItemStatus, { label: string; icon: any; className: string }> = {
@@ -44,12 +47,28 @@ const DriverOrderProcess = () => {
       ]);
       if (orderRes.data) {
         setOrder(orderRes.data);
-        // If order is assigned, move to processing
         if (orderRes.data.status === "assigned") {
           await supabase.from("orders").update({ status: "processing" }).eq("id", orderId);
         }
       }
-      setItems(itemsRes.data || []);
+
+      // Fetch product details (images, units)
+      const orderItems = itemsRes.data || [];
+      const productIds = orderItems.map((i: any) => i.product_id).filter(Boolean);
+      let productsMap: Record<string, any> = {};
+      if (productIds.length > 0) {
+        const { data: productsData } = await supabase
+          .from("products")
+          .select("id, image_url, unit")
+          .in("id", productIds);
+        (productsData || []).forEach((p: any) => { productsMap[p.id] = p; });
+      }
+
+      setItems(orderItems.map((i: any) => ({
+        ...i,
+        product_image: productsMap[i.product_id]?.image_url || null,
+        product_unit: productsMap[i.product_id]?.unit || null,
+      })));
       setLoading(false);
     };
     fetchOrder();
@@ -170,15 +189,24 @@ const DriverOrderProcess = () => {
           return (
             <Card key={item.id} className={cn("border-2 transition-all", currentStatus !== "pending" ? "border-border/50" : "border-border")}>
               <CardContent className="p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-center gap-3">
+                  {item.product_image ? (
+                    <img
+                      src={item.product_image}
+                      alt={item.product_name}
+                      className="w-16 h-16 rounded-xl object-contain bg-muted flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center text-2xl flex-shrink-0">📦</div>
+                  )}
+                  <div className="flex-1 min-w-0">
                     <p className="font-bold text-base">{item.product_name}</p>
                     <p className="text-sm text-muted-foreground">
-                      الكمية: {item.quantity}
+                      الكمية: {item.quantity} {item.product_unit || ""}
                       {item.price ? ` • ${item.price} ر.س` : ""}
                     </p>
                   </div>
-                  <span className={cn("text-xs px-2 py-1 rounded-full font-medium", config.className)}>
+                  <span className={cn("text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap", config.className)}>
                     {config.label}
                   </span>
                 </div>
