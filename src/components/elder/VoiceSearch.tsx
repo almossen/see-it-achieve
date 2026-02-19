@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
-import { Mic, MicOff, X, Check } from "lucide-react";
+import { Mic, MicOff, X } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 
@@ -10,25 +10,87 @@ interface VoiceSearchProps {
   onClose: () => void;
 }
 
-// Known units that an elder might say
+// Known units with dual forms mapped to singular
+const UNIT_MAP: Record<string, string> = {
+  كرتونين: "كرتون", كيلوين: "كيلو", حبتين: "حبة", حزمتين: "حزمة",
+  علبتين: "علبة", كيسين: "كيس", لترين: "لتر", صندوقين: "صندوق",
+  طبقين: "طبق", قطعتين: "قطعة", ربطتين: "ربطة",
+};
 const KNOWN_UNITS = ["كرتون", "كيلو", "حبة", "حزمة", "علبة", "كيس", "لتر", "باكيت", "صندوق", "ربطة", "طبق", "قطعة"];
 
-function parseVoiceQuery(raw: string): { productQuery: string; detectedUnit: string | null } {
-  const trimmed = raw.trim();
-  for (const unit of KNOWN_UNITS) {
-    if (trimmed.startsWith(unit + " ")) {
-      return { productQuery: trimmed.slice(unit.length + 1).trim(), detectedUnit: unit };
-    }
-    if (trimmed.endsWith(" " + unit)) {
-      return { productQuery: trimmed.slice(0, trimmed.length - unit.length - 1).trim(), detectedUnit: unit };
+// Arabic number words → numeric value
+const ARABIC_NUMBERS: Record<string, number> = {
+  واحد: 1, واحدة: 1,
+  اثنين: 2, اثنان: 2, اثنتين: 2,
+  ثلاثة: 3, ثلاث: 3,
+  أربعة: 4, أربع: 4,
+  خمسة: 5, خمس: 5,
+  ستة: 6, ست: 6,
+  سبعة: 7, سبع: 7,
+  ثمانية: 8, ثماني: 8, ثمان: 8,
+  تسعة: 9, تسع: 9,
+  عشرة: 10, عشر: 10,
+};
+
+function parseVoiceQuery(raw: string): { productQuery: string; detectedUnit: string | null; detectedQuantity: number } {
+  let text = raw.trim();
+  let detectedUnit: string | null = null;
+  let detectedQuantity = 1;
+
+  // 1. Extract leading Arabic number word (e.g. "ثلاث كرتون خيار")
+  for (const [word, num] of Object.entries(ARABIC_NUMBERS)) {
+    if (text.startsWith(word + " ")) {
+      detectedQuantity = num;
+      text = text.slice(word.length + 1).trim();
+      break;
     }
   }
-  return { productQuery: trimmed, detectedUnit: null };
+
+  // 2. Extract leading numeric digit (e.g. "3 كرتون خيار")
+  const digitMatch = text.match(/^(\d+)\s+/);
+  if (digitMatch && detectedQuantity === 1) {
+    detectedQuantity = parseInt(digitMatch[1], 10);
+    text = text.slice(digitMatch[0].length).trim();
+  }
+
+  // 3. Detect dual unit forms (كيلوين → qty 2 + كيلو)
+  for (const [dual, singular] of Object.entries(UNIT_MAP)) {
+    if (text.startsWith(dual + " ")) {
+      detectedUnit = singular;
+      if (detectedQuantity === 1) detectedQuantity = 2;
+      text = text.slice(dual.length + 1).trim();
+      break;
+    }
+    if (text.endsWith(" " + dual)) {
+      detectedUnit = singular;
+      if (detectedQuantity === 1) detectedQuantity = 2;
+      text = text.slice(0, text.length - dual.length - 1).trim();
+      break;
+    }
+  }
+
+  // 4. Detect singular unit if not yet found
+  if (!detectedUnit) {
+    for (const unit of KNOWN_UNITS) {
+      if (text.startsWith(unit + " ")) {
+        detectedUnit = unit;
+        text = text.slice(unit.length + 1).trim();
+        break;
+      }
+      if (text.endsWith(" " + unit)) {
+        detectedUnit = unit;
+        text = text.slice(0, text.length - unit.length - 1).trim();
+        break;
+      }
+    }
+  }
+
+  return { productQuery: text, detectedUnit, detectedQuantity };
 }
 
 const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   const { tenantId, user } = useAuth();
-  const { addItem } = useCart();
+  const { addItem, updateQuantity } = useCart();
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [addedItems, setAddedItems] = useState<string[]>([]);
@@ -41,7 +103,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
     handleVoiceResultRef.current = async (query: string) => {
       if (!tenantId || !query.trim()) return;
 
-      const { productQuery, detectedUnit } = parseVoiceQuery(query);
+      const { productQuery, detectedUnit, detectedQuantity } = parseVoiceQuery(query);
 
       const { data } = await supabase
         .from("products")
@@ -53,27 +115,37 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
 
       if (data && data.length > 0) {
         const product = data[0];
+        const unitLabel = detectedUnit || product.unit || "";
         addItem({
           product_id: product.id,
           name: product.name_ar,
           emoji: product.emoji,
           price: product.price,
-          unit: detectedUnit || product.unit,
+          unit: unitLabel,
           image_url: product.image_url,
         });
-        const unitLabel = detectedUnit || product.unit || "";
-        setAddedItems(prev => [...prev, `✅ ${product.name_ar} (${unitLabel})`]);
-        toast.success(`تمت إضافة ${product.name_ar} للسلة`);
+        // Set quantity if more than 1
+        if (detectedQuantity > 1) {
+          updateQuantity(product.id, detectedQuantity);
+        }
+        const qtyLabel = detectedQuantity > 1 ? `${detectedQuantity} ` : "";
+        setAddedItems(prev => [...prev, `✅ ${qtyLabel}${unitLabel} ${product.name_ar}`]);
+        toast.success(`تمت إضافة ${detectedQuantity > 1 ? detectedQuantity + " " : ""}${product.name_ar} للسلة`);
       } else {
         const customId = `custom_${Date.now()}`;
+        const unitLabel = detectedUnit || "حبة";
         addItem({
           product_id: customId,
           name: productQuery,
           emoji: "📝",
-          unit: detectedUnit || "حبة",
+          unit: unitLabel,
           is_custom: true,
         });
-        setAddedItems(prev => [...prev, `📝 ${productQuery} (${detectedUnit || "حبة"}) - غير موجود بالقائمة`]);
+        if (detectedQuantity > 1) {
+          updateQuantity(customId, detectedQuantity);
+        }
+        const qtyLabel = detectedQuantity > 1 ? `${detectedQuantity} ` : "";
+        setAddedItems(prev => [...prev, `📝 ${qtyLabel}${unitLabel} ${productQuery} — غير موجود بالقائمة`]);
         toast.info(`تمت إضافة "${productQuery}" كمنتج مخصص`);
 
         await supabase.from("suggested_products").insert({
@@ -84,7 +156,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
         });
       }
     };
-  }, [tenantId, user, addItem]);
+  }, [tenantId, user, addItem, updateQuantity]);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
