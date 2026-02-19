@@ -11,6 +11,23 @@ interface VoiceSearchProps {
   onClose: () => void;
 }
 
+// Known units that an elder might say
+const KNOWN_UNITS = ["كرتون", "كيلو", "حبة", "حزمة", "علبة", "كيس", "لتر", "باكيت", "صندوق", "ربطة", "طبق", "قطعة"];
+
+function parseVoiceQuery(raw: string): { productQuery: string; detectedUnit: string | null } {
+  const trimmed = raw.trim();
+  for (const unit of KNOWN_UNITS) {
+    // "كرتون خيار" or "خيار كرتون"
+    if (trimmed.startsWith(unit + " ")) {
+      return { productQuery: trimmed.slice(unit.length + 1).trim(), detectedUnit: unit };
+    }
+    if (trimmed.endsWith(" " + unit)) {
+      return { productQuery: trimmed.slice(0, trimmed.length - unit.length - 1).trim(), detectedUnit: unit };
+    }
+  }
+  return { productQuery: trimmed, detectedUnit: null };
+}
+
 const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   const { tenantId } = useAuth();
   const { addItem } = useCart();
@@ -18,10 +35,10 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   const [transcript, setTranscript] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  const [detectedUnit, setDetectedUnit] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
-    // Check for browser speech recognition support
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast.error("المتصفح لا يدعم التعرف على الصوت");
@@ -40,7 +57,6 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
       }
       setTranscript(finalTranscript);
 
-      // If final result, search products
       if (event.results[event.results.length - 1].isFinal) {
         searchProducts(finalTranscript);
       }
@@ -69,12 +85,15 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
     if (!tenantId || !query.trim()) return;
     setSearching(true);
 
+    const { productQuery, detectedUnit: unit } = parseVoiceQuery(query);
+    setDetectedUnit(unit);
+
     const { data } = await supabase
       .from("products")
       .select("*")
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
-      .or(`name_ar.ilike.%${query}%,name_en.ilike.%${query}%`)
+      .or(`name_ar.ilike.%${productQuery}%,name_en.ilike.%${productQuery}%`)
       .limit(10);
 
     setResults(data || []);
@@ -87,6 +106,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
     } else {
       setTranscript("");
       setResults([]);
+      setDetectedUnit(null);
       recognitionRef.current?.start();
       setIsListening(true);
     }
@@ -98,9 +118,10 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
       name: product.name_ar,
       emoji: product.emoji,
       price: product.price,
-      unit: product.unit,
+      unit: detectedUnit || product.unit,
     });
-    toast.success(`تمت إضافة ${product.name_ar} للسلة`);
+    const unitLabel = detectedUnit || product.unit || "";
+    toast.success(`تمت إضافة ${product.name_ar} (${unitLabel}) للسلة`);
   };
 
   return (
@@ -146,6 +167,9 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
             className="mt-4 bg-muted rounded-xl p-4 w-full max-w-sm text-center"
           >
             <p className="text-base">🗣️ {transcript}</p>
+            {detectedUnit && (
+              <p className="text-sm text-primary font-bold mt-1">📦 الوحدة: {detectedUnit}</p>
+            )}
           </motion.div>
         )}
       </div>
