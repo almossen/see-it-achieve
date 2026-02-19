@@ -25,6 +25,7 @@ export type Database = {
           name_en: string | null
           sort_order: number | null
           tenant_id: string
+          unit_options: string[] | null
         }
         Insert: {
           created_at?: string
@@ -36,6 +37,7 @@ export type Database = {
           name_en?: string | null
           sort_order?: number | null
           tenant_id: string
+          unit_options?: string[] | null
         }
         Update: {
           created_at?: string
@@ -47,6 +49,7 @@ export type Database = {
           name_en?: string | null
           sort_order?: number | null
           tenant_id?: string
+          unit_options?: string[] | null
         }
         Relationships: [
           {

@@ -171,6 +171,7 @@ const ElderCategory = () => {
               "حبة"
             : "حبة"
         }
+        unitOptions={category?.unit_options}
         onAdd={(unit, qty) =>
           selectedProduct && handleAdd(selectedProduct, unit, qty)
         }

@@ -10,14 +10,19 @@ import {
 import { Minus, Plus, ShoppingCart } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const UNIT_OPTIONS = [
-  { value: "حبة", emoji: "1️⃣", label: "حبة" },
-  { value: "كرتون", emoji: "📦", label: "كرتون" },
-  { value: "درزن", emoji: "🥚", label: "درزن" },
-  { value: "كيلو", emoji: "⚖️", label: "كيلو" },
-  { value: "كيس", emoji: "🛍️", label: "كيس" },
-  { value: "حزمة", emoji: "🌿", label: "حزمة" },
-];
+const ALL_UNITS: Record<string, { emoji: string; label: string }> = {
+  "حبة": { emoji: "1️⃣", label: "حبة" },
+  "كرتون": { emoji: "📦", label: "كرتون" },
+  "صحن": { emoji: "🍽️", label: "صحن" },
+  "كيلو": { emoji: "⚖️", label: "كيلو" },
+  "كيس": { emoji: "🛍️", label: "كيس" },
+  "حزمة": { emoji: "🌿", label: "حزمة" },
+  "درزن": { emoji: "🥚", label: "درزن" },
+  "علبة": { emoji: "🥫", label: "علبة" },
+  "ربطة": { emoji: "🧻", label: "ربطة" },
+};
+
+const DEFAULT_UNITS = ["حبة", "كرتون", "كيلو"];
 
 interface ProductQuantityDrawerProps {
   open: boolean;
@@ -32,6 +37,7 @@ interface ProductQuantityDrawerProps {
   } | null;
   currentQty: number;
   currentUnit: string;
+  unitOptions?: string[] | null;
   onAdd: (unit: string, qty: number) => void;
   onUpdateQty: (qty: number) => void;
 }
@@ -42,12 +48,16 @@ const ProductQuantityDrawer = ({
   product,
   currentQty,
   currentUnit,
+  unitOptions,
   onAdd,
   onUpdateQty,
 }: ProductQuantityDrawerProps) => {
   const [selectedUnit, setSelectedUnit] = useState(currentUnit);
   const [qty, setQty] = useState(currentQty || 1);
   const [unitQuantities, setUnitQuantities] = useState<Record<string, number>>({});
+
+  const units = (unitOptions && unitOptions.length > 0 ? unitOptions : DEFAULT_UNITS)
+    .map((u) => ({ value: u, ...(ALL_UNITS[u] || { emoji: "📦", label: u }) }));
 
   // Reset state when product changes
   useEffect(() => {
@@ -75,9 +85,7 @@ const ProductQuantityDrawer = ({
       } else {
         updated[unit] = next;
       }
-      // Update selected unit to the last changed one
       if (next > 0) setSelectedUnit(unit);
-      // Update total qty
       const total = Object.values(updated).reduce((s, v) => s + v, 0);
       setQty(total || 1);
       return updated;
@@ -99,7 +107,6 @@ const ProductQuantityDrawer = ({
     <Drawer open={open} onOpenChange={handleOpenChange}>
       <DrawerContent className="max-h-[85vh] flex flex-col">
         <DrawerHeader className="text-center pb-2 flex-shrink-0">
-          {/* Product display */}
           <div className="flex flex-col items-center gap-2 mb-2">
             {product.image_url ? (
               <img
@@ -119,10 +126,9 @@ const ProductQuantityDrawer = ({
           </div>
         </DrawerHeader>
 
-        {/* Scrollable unit list */}
         <div className="flex-1 overflow-y-auto px-4 pb-2">
           <div className="space-y-2">
-            {UNIT_OPTIONS.map((u) => {
+            {units.map((u) => {
               const unitQty = unitQuantities[u.value] || 0;
               const isActive = unitQty > 0;
               return (
@@ -172,7 +178,6 @@ const ProductQuantityDrawer = ({
           </div>
         </div>
 
-        {/* Fixed confirm button at bottom */}
         <div className="flex-shrink-0 px-4 pb-6 pt-3 border-t border-border">
           <Button
             onClick={handleConfirm}
