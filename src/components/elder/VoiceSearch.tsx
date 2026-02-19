@@ -34,6 +34,58 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   const [addedItems, setAddedItems] = useState<string[]>([]);
   const recognitionRef = useRef<any>(null);
 
+  // Keep a ref to the latest handler to avoid stale closure in SpeechRecognition callbacks
+  const handleVoiceResultRef = useRef<(query: string) => Promise<void>>();
+
+  useEffect(() => {
+    handleVoiceResultRef.current = async (query: string) => {
+      if (!tenantId || !query.trim()) return;
+
+      const { productQuery, detectedUnit } = parseVoiceQuery(query);
+
+      const { data } = await supabase
+        .from("products")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .or(`name_ar.ilike.%${productQuery}%,name_en.ilike.%${productQuery}%`)
+        .limit(5);
+
+      if (data && data.length > 0) {
+        const product = data[0];
+        addItem({
+          product_id: product.id,
+          name: product.name_ar,
+          emoji: product.emoji,
+          price: product.price,
+          unit: detectedUnit || product.unit,
+          image_url: product.image_url,
+        });
+        const unitLabel = detectedUnit || product.unit || "";
+        setAddedItems(prev => [...prev, `✅ ${product.name_ar} (${unitLabel})`]);
+        toast.success(`تمت إضافة ${product.name_ar} للسلة`);
+      } else {
+        const customId = `custom_${Date.now()}`;
+        addItem({
+          product_id: customId,
+          name: productQuery,
+          emoji: "📝",
+          unit: detectedUnit || "حبة",
+          is_custom: true,
+        });
+        setAddedItems(prev => [...prev, `📝 ${productQuery} (${detectedUnit || "حبة"}) - غير موجود بالقائمة`]);
+        toast.info(`تمت إضافة "${productQuery}" كمنتج مخصص`);
+
+        await supabase.from("suggested_products").insert({
+          tenant_id: tenantId,
+          name_ar: productQuery,
+          unit: detectedUnit,
+          suggested_by: user?.id,
+        });
+      }
+    };
+  }, [tenantId, user, addItem]);
+
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -54,7 +106,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
       setTranscript(finalTranscript);
 
       if (event.results[event.results.length - 1].isFinal) {
-        handleVoiceResult(finalTranscript);
+        handleVoiceResultRef.current?.(finalTranscript);
       }
     };
 
@@ -73,57 +125,6 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
     recognitionRef.current = recognition;
     return () => { recognition.abort(); };
   }, []);
-
-  const handleVoiceResult = async (query: string) => {
-    if (!tenantId || !query.trim()) return;
-
-    const { productQuery, detectedUnit } = parseVoiceQuery(query);
-
-    // Search for existing product
-    const { data } = await supabase
-      .from("products")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .or(`name_ar.ilike.%${productQuery}%,name_en.ilike.%${productQuery}%`)
-      .limit(5);
-
-    if (data && data.length > 0) {
-      // Found a match - add the best match directly
-      const product = data[0];
-      addItem({
-        product_id: product.id,
-        name: product.name_ar,
-        emoji: product.emoji,
-        price: product.price,
-        unit: detectedUnit || product.unit,
-        image_url: product.image_url,
-      });
-      const unitLabel = detectedUnit || product.unit || "";
-      setAddedItems(prev => [...prev, `✅ ${product.name_ar} (${unitLabel})`]);
-      toast.success(`تمت إضافة ${product.name_ar} للسلة`);
-    } else {
-      // Product not found - add as custom item with the spoken name
-      const customId = `custom_${Date.now()}`;
-      addItem({
-        product_id: customId,
-        name: productQuery,
-        emoji: "📝",
-        unit: detectedUnit || "حبة",
-        is_custom: true,
-      });
-      setAddedItems(prev => [...prev, `📝 ${productQuery} (${detectedUnit || "حبة"}) - غير موجود بالقائمة`]);
-      toast.info(`تمت إضافة "${productQuery}" كمنتج مخصص`);
-
-      // Save to suggested_products for admin review
-      await supabase.from("suggested_products").insert({
-        tenant_id: tenantId,
-        name_ar: productQuery,
-        unit: detectedUnit,
-        suggested_by: user?.id,
-      });
-    }
-  };
 
   const toggleListening = () => {
     if (isListening) {
