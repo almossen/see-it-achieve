@@ -6,9 +6,10 @@ import { useCart } from "@/hooks/useCart";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Minus, Plus, Trash2, ShoppingCart, CheckCircle } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingCart, CheckCircle, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRef, useCallback } from "react";
 
 const ElderCart = () => {
   const { tenantId, user } = useAuth();
@@ -18,6 +19,53 @@ const ElderCart = () => {
   const [selectedDriver, setSelectedDriver] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const readCartAloud = useCallback(() => {
+    if (!window.speechSynthesis) {
+      toast.error("المتصفح لا يدعم القراءة الصوتية");
+      return;
+    }
+
+    // If already speaking, stop
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+      return;
+    }
+
+    // Build Arabic text to read
+    const itemsText = items
+      .map((item) => {
+        const qty = item.quantity;
+        const unit = item.unit || "حبة";
+        return `${item.name}، ${qty} ${unit}`;
+      })
+      .join("، ");
+
+    const fullText = `طلبك يحتوي على: ${itemsText}. المجموع ${total.toFixed(0)} ريال سعودي.`;
+
+    const utterance = new SpeechSynthesisUtterance(fullText);
+    utterance.lang = "ar-SA";
+    utterance.rate = 0.85;
+    utterance.pitch = 1;
+
+    // Try to pick an Arabic voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const arabicVoice = voices.find(
+      (v) => v.lang.startsWith("ar") || v.name.toLowerCase().includes("arabic")
+    );
+    if (arabicVoice) utterance.voice = arabicVoice;
+
+    utterance.onstart = () => setSpeaking(true);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+
+    utteranceRef.current = utterance;
+    window.speechSynthesis.cancel(); // clear queue first
+    window.speechSynthesis.speak(utterance);
+  }, [items, total, speaking]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -220,6 +268,25 @@ const ElderCart = () => {
           </Select>
         </div>
       )}
+
+      {/* Confirm by voice */}
+      <Button
+        variant="outline"
+        onClick={readCartAloud}
+        className="w-full h-12 text-base rounded-xl border-primary/40 gap-2"
+      >
+        {speaking ? (
+          <>
+            <VolumeX className="h-5 w-5 text-primary" />
+            إيقاف القراءة
+          </>
+        ) : (
+          <>
+            <Volume2 className="h-5 w-5 text-primary" />
+            🔊 استمع لمحتويات السلة
+          </>
+        )}
+      </Button>
 
       {/* Total + Submit */}
       <div className="bg-muted rounded-xl p-4 space-y-3">
