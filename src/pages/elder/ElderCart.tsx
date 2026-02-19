@@ -209,9 +209,6 @@ const ElderCart = () => {
               <span className="text-3xl flex-shrink-0">{item.emoji || "📦"}</span>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm truncate">{item.name} <span className="text-muted-foreground font-normal">({item.unit || "حبة"})</span></p>
-                {item.price && (
-                  <p className="text-xs text-primary font-medium">{(item.price * item.quantity).toFixed(2)} ر.س</p>
-                )}
               </div>
               <div className="flex items-center gap-1.5">
                 <Button
