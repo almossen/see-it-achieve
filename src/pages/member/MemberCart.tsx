@@ -43,6 +43,7 @@ const MemberCart = () => {
         product_name: item.name,
         quantity: item.quantity,
         price: item.price,
+        unit: item.unit || null,
       }))
     );
 

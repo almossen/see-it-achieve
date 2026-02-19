@@ -17,6 +17,7 @@ interface OrderItem {
   quantity: number;
   price: number | null;
   status: string | null;
+  unit: string | null;
   substitute_image_url: string | null;
   substitute_approved: boolean | null;
   product_image?: string | null;
@@ -272,7 +273,7 @@ const DriverOrderProcess = () => {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-base">{item.product_name}</p>
                     <p className="text-sm text-muted-foreground">
-                      الكمية: {item.quantity} {item.product_unit || ""}
+                      الكمية: {item.quantity} {item.unit || item.product_unit || ""}
                       {item.price ? ` • ${item.price} ر.س` : ""}
                     </p>
                   </div>
