@@ -27,27 +27,6 @@ const Login = () => {
     // If logging in with phone, look up the email from profiles
     if (loginMethod === "phone") {
       const phone = identifier.trim();
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .eq("phone", phone)
-        .maybeSingle();
-
-      if (profileError || !profileData) {
-        toast.error("لم يتم العثور على حساب بهذا الرقم");
-        setLoading(false);
-        return;
-      }
-
-      // Get user email from auth using a workaround: try signing in won't work,
-      // we need the email. Let's store it differently.
-      // Actually, we can get email from auth.users via edge function, but simpler:
-      // Let's look up email from the user metadata or just attempt login differently.
-      // The simplest: store email in profiles table or use Supabase admin API.
-      // For now, let's use an edge function to get email by user_id.
-      
-      // Alternative simpler approach: lookup email from profiles or user_roles
-      // Actually profiles don't store email. Let's use a lightweight edge function.
       const { data: fnData, error: fnError } = await supabase.functions.invoke("get-user-email", {
         body: { phone }
       });
