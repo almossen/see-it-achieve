@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search, Camera, ImagePlus, X, Sparkles, Loader2, Languages } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Camera, ImagePlus, X, Sparkles, Loader2, Languages, GripVertical, ArrowUpDown } from "lucide-react";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -21,6 +21,7 @@ const ProductsPage = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
+  const [sortMode, setSortMode] = useState(false);
   const [form, setForm] = useState({
     name_ar: "", name_en: "", emoji: "", price: "", unit: "حبة", category_id: "",
   });
@@ -32,6 +33,10 @@ const ProductsPage = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [translating, setTranslating] = useState(false);
+
+  // Drag state for sort mode
+  const dragIndexRef = useRef<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const translateName = async (arabicName: string) => {
     if (!arabicName.trim() || form.name_en) return;
@@ -53,7 +58,7 @@ const ProductsPage = () => {
   const fetchData = async () => {
     if (!tenantId) return;
     const [prodRes, catRes] = await Promise.all([
-      supabase.from("products").select("*, categories(name_ar, emoji)").eq("tenant_id", tenantId).order("created_at", { ascending: false }),
+      supabase.from("products").select("*, categories(name_ar, emoji)").eq("tenant_id", tenantId).order("sort_order", { ascending: true }),
       supabase.from("categories").select("*").eq("tenant_id", tenantId).eq("is_active", true).order("sort_order"),
     ]);
     setProducts(prodRes.data || []);
@@ -62,6 +67,37 @@ const ProductsPage = () => {
   };
 
   useEffect(() => { fetchData(); }, [tenantId]);
+
+  // Save product order to DB
+  const saveProductOrder = async (reordered: any[]) => {
+    const updates = reordered.map((p, i) =>
+      supabase.from("products").update({ sort_order: i }).eq("id", p.id)
+    );
+    await Promise.all(updates);
+  };
+
+  // Drag handlers (sort mode)
+  const handleDragStart = (index: number) => { dragIndexRef.current = index; };
+  const handleDragOver = (e: React.DragEvent, index: number) => { e.preventDefault(); setDragOverIndex(index); };
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    const dragIndex = dragIndexRef.current;
+    if (dragIndex === null || dragIndex === dropIndex) { setDragOverIndex(null); return; }
+    const reordered = [...sortableProducts];
+    const [moved] = reordered.splice(dragIndex, 1);
+    reordered.splice(dropIndex, 0, moved);
+    // Merge back: replace sorted items in products array
+    setProducts((prev) => {
+      const ids = new Set(reordered.map((p) => p.id));
+      const rest = prev.filter((p) => !ids.has(p.id));
+      return [...reordered, ...rest];
+    });
+    setDragOverIndex(null);
+    dragIndexRef.current = null;
+    saveProductOrder(reordered);
+    toast.success("تم حفظ الترتيب");
+  };
+  const handleDragEnd = () => { setDragOverIndex(null); dragIndexRef.current = null; };
 
   const uploadImage = async (file: File): Promise<string | null> => {
     const ext = file.name.split(".").pop();
@@ -195,6 +231,11 @@ const ProductsPage = () => {
     return matchSearch && matchCategory;
   });
 
+  // In sort mode: show all products filtered by category only (no text search)
+  const sortableProducts = filterCategory === "all"
+    ? products
+    : products.filter((p) => p.category_id === filterCategory);
+
   if (loading) {
     return (
       <div className="p-6">
@@ -209,217 +250,235 @@ const ProductsPage = () => {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold">إدارة المنتجات</h1>
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button className="gap-2"><Plus className="h-4 w-4" />إضافة منتج</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingId ? "تعديل المنتج" : "إضافة منتج جديد"}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSave} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>الاسم بالعربية</Label>
-                  <Input
-                    value={form.name_ar}
-                    onChange={(e) => setForm({ ...form, name_ar: e.target.value })}
-                    onBlur={(e) => translateName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1">
-                    الاسم بالإنجليزية
-                    {translating && <Loader2 className="h-3 w-3 animate-spin" />}
-                  </Label>
-                  <div className="relative">
-                    <Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} dir="ltr" placeholder={translating ? "جاري الترجمة..." : ""} />
-                    {form.name_ar && !form.name_en && !translating && (
-                      <Button type="button" variant="ghost" size="icon" className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7" onClick={() => translateName(form.name_ar)}>
-                        <Languages className="h-4 w-4" />
-                      </Button>
-                    )}
+        <div>
+          <h1 className="text-2xl font-bold">إدارة المنتجات</h1>
+          {sortMode && <p className="text-xs text-muted-foreground mt-0.5">اسحب ↕ لتغيير الترتيب</p>}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant={sortMode ? "default" : "outline"}
+            className="gap-2"
+            onClick={() => { setSortMode(!sortMode); setSearch(""); }}
+          >
+            <GripVertical className="h-4 w-4" />
+            {sortMode ? "إنهاء الترتيب" : "ترتيب المنتجات"}
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button className="gap-2"><Plus className="h-4 w-4" />إضافة منتج</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editingId ? "تعديل المنتج" : "إضافة منتج جديد"}</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSave} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>الاسم بالعربية</Label>
+                    <Input
+                      value={form.name_ar}
+                      onChange={(e) => setForm({ ...form, name_ar: e.target.value })}
+                      onBlur={(e) => translateName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1">
+                      الاسم بالإنجليزية
+                      {translating && <Loader2 className="h-3 w-3 animate-spin" />}
+                    </Label>
+                    <div className="relative">
+                      <Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} dir="ltr" placeholder={translating ? "جاري الترجمة..." : ""} />
+                      {form.name_ar && !form.name_en && !translating && (
+                        <Button type="button" variant="ghost" size="icon" className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7" onClick={() => translateName(form.name_ar)}>
+                          <Languages className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>الرمز</Label>
-                  <Input value={form.emoji} onChange={(e) => setForm({ ...form, emoji: e.target.value })} className="text-xl text-center" maxLength={4} placeholder="🥕" />
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>الرمز</Label>
+                    <Input value={form.emoji} onChange={(e) => setForm({ ...form, emoji: e.target.value })} className="text-xl text-center" maxLength={4} placeholder="🥕" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>السعر</Label>
+                    <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} dir="ltr" placeholder="0.00" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>الوحدة</Label>
+                    <Select value={form.unit} onValueChange={(v) => setForm({ ...form, unit: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="حبة">حبة</SelectItem>
+                        <SelectItem value="كيلو">كيلو</SelectItem>
+                        <SelectItem value="لتر">لتر</SelectItem>
+                        <SelectItem value="علبة">علبة</SelectItem>
+                        <SelectItem value="كيس">كيس</SelectItem>
+                        <SelectItem value="ربطة">ربطة</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>السعر</Label>
-                  <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} dir="ltr" placeholder="0.00" />
-                </div>
-                <div className="space-y-2">
-                  <Label>الوحدة</Label>
-                  <Select value={form.unit} onValueChange={(v) => setForm({ ...form, unit: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label>الفئة</Label>
+                  <Select value={form.category_id} onValueChange={(v) => setForm({ ...form, category_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="اختر فئة" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="حبة">حبة</SelectItem>
-                      <SelectItem value="كيلو">كيلو</SelectItem>
-                      <SelectItem value="لتر">لتر</SelectItem>
-                      <SelectItem value="علبة">علبة</SelectItem>
-                      <SelectItem value="كيس">كيس</SelectItem>
-                      <SelectItem value="ربطة">ربطة</SelectItem>
+                      {categories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name_ar}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>الفئة</Label>
-                <Select value={form.category_id} onValueChange={(v) => setForm({ ...form, category_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="اختر فئة" /></SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name_ar}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {/* Image Upload */}
-              <div className="space-y-2">
-                <Label>صورة المنتج</Label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => handleImageSelect(e.target.files?.[0] || null)}
-                />
-                <input
-                  ref={cameraInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => handleImageSelect(e.target.files?.[0] || null)}
-                />
-                {imagePreview ? (
-                  <div className="relative w-full">
-                    <img
-                      src={imagePreview}
-                      alt="معاينة"
-                      className="w-full h-40 object-cover rounded-lg border border-border"
-                    />
-                    {recognizing && (
-                      <div className="absolute inset-0 bg-background/70 rounded-lg flex items-center justify-center gap-2">
-                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                        <span className="text-sm font-medium text-primary">جاري التعرف بالذكاء الاصطناعي...</span>
-                      </div>
-                    )}
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-2 left-2 h-7 w-7"
-                      onClick={() => { setImageFile(null); setImagePreview(null); }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                    {!recognizing && (
-                      <div className="absolute bottom-2 right-2">
-                        <Button
-                          type="button"
-                          variant="default"
-                          size="sm"
-                          className="gap-1 h-8 text-xs"
-                          onClick={() => recognizeProduct(imagePreview!)}
-                        >
-                          <Sparkles className="h-3 w-3" />
-                          تعرّف بالذكاء الاصطناعي
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="flex-1 gap-2"
-                      onClick={() => cameraInputRef.current?.click()}
-                    >
-                      <Camera className="h-4 w-4" />
-                      الكاميرا
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="flex-1 gap-2"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <ImagePlus className="h-4 w-4" />
-                      اختر صورة
-                    </Button>
-                  </div>
-                )}
-              </div>
-              <Button type="submit" className="w-full" disabled={submitting || uploadingImage}>
-                {uploadingImage ? "جاري رفع الصورة..." : submitting ? "جاري الحفظ..." : editingId ? "حفظ التعديلات" : "إضافة المنتج"}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+                {/* Image Upload */}
+                <div className="space-y-2">
+                  <Label>صورة المنتج</Label>
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleImageSelect(e.target.files?.[0] || null)} />
+                  <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleImageSelect(e.target.files?.[0] || null)} />
+                  {imagePreview ? (
+                    <div className="relative w-full">
+                      <img src={imagePreview} alt="معاينة" className="w-full h-40 object-cover rounded-lg border border-border" />
+                      {recognizing && (
+                        <div className="absolute inset-0 bg-background/70 rounded-lg flex items-center justify-center gap-2">
+                          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                          <span className="text-sm font-medium text-primary">جاري التعرف بالذكاء الاصطناعي...</span>
+                        </div>
+                      )}
+                      <Button type="button" variant="destructive" size="icon" className="absolute top-2 left-2 h-7 w-7" onClick={() => { setImageFile(null); setImagePreview(null); }}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                      {!recognizing && (
+                        <div className="absolute bottom-2 right-2">
+                          <Button type="button" variant="default" size="sm" className="gap-1 h-8 text-xs" onClick={() => recognizeProduct(imagePreview!)}>
+                            <Sparkles className="h-3 w-3" />
+                            تعرّف بالذكاء الاصطناعي
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => cameraInputRef.current?.click()}>
+                        <Camera className="h-4 w-4" /> الكاميرا
+                      </Button>
+                      <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => fileInputRef.current?.click()}>
+                        <ImagePlus className="h-4 w-4" /> اختر صورة
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <Button type="submit" className="w-full" disabled={submitting || uploadingImage}>
+                  {uploadingImage ? "جاري رفع الصورة..." : submitting ? "جاري الحفظ..." : editingId ? "حفظ التعديلات" : "إضافة المنتج"}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="بحث عن منتج..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pr-10"
-          />
+      {/* Filters (hidden in sort mode) */}
+      {!sortMode && (
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="بحث عن منتج..." value={search} onChange={(e) => setSearch(e.target.value)} className="pr-10" />
+          </div>
+          <Select value={filterCategory} onValueChange={setFilterCategory}>
+            <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="كل الفئات" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">كل الفئات</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name_ar}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+      )}
+
+      {/* Category filter in sort mode */}
+      {sortMode && (
         <Select value={filterCategory} onValueChange={setFilterCategory}>
-          <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="كل الفئات" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="كل الفئات" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">كل الفئات</SelectItem>
+            <SelectItem value="all">كل المنتجات</SelectItem>
             {categories.map((c) => (
               <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name_ar}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-      </div>
+      )}
 
-      {/* Products Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {filtered.map((product) => (
-          <Card key={product.id}>
-            <CardContent className="p-4 text-center space-y-2">
+      {/* Sort mode: list view */}
+      {sortMode ? (
+        <div className="space-y-1.5">
+          {sortableProducts.map((product, index) => (
+            <div
+              key={product.id}
+              draggable
+              onDragStart={() => handleDragStart(index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDrop={(e) => handleDrop(e, index)}
+              onDragEnd={handleDragEnd}
+              className={`flex items-center gap-3 bg-card border border-border rounded-xl p-3 cursor-grab active:cursor-grabbing transition-all ${dragOverIndex === index ? "scale-[1.02] opacity-70 border-primary" : ""}`}
+            >
+              <GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0" />
               {product.image_url ? (
-                <img src={product.image_url} alt={product.name_ar} className="w-full h-32 object-contain rounded-lg mb-2" />
+                <img src={product.image_url} alt={product.name_ar} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
               ) : (
-                <div className="text-4xl mb-2">{product.emoji || "📦"}</div>
+                <span className="text-2xl flex-shrink-0">{product.emoji || "📦"}</span>
               )}
-              <p className="font-medium text-sm truncate">{product.name_ar}</p>
-              {product.categories && (
-                <p className="text-xs text-muted-foreground">{product.categories.emoji} {product.categories.name_ar}</p>
-              )}
-              {product.price && (
-                <p className="text-sm font-bold text-primary">{product.price} ر.س / {product.unit}</p>
-              )}
-              <div className="flex gap-1 justify-center pt-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(product)}>
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(product.id)}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm truncate">{product.name_ar}</p>
+                {product.categories && (
+                  <p className="text-xs text-muted-foreground">{product.categories.emoji} {product.categories.name_ar}</p>
+                )}
               </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      {filtered.length === 0 && (
-        <p className="text-center text-muted-foreground py-12">
-          {products.length === 0 ? "لا توجد منتجات بعد" : "لا توجد نتائج مطابقة"}
-        </p>
+              <span className="text-xs text-muted-foreground tabular-nums w-6 text-center">{index + 1}</span>
+            </div>
+          ))}
+          {sortableProducts.length === 0 && (
+            <p className="text-center text-muted-foreground py-8">لا توجد منتجات</p>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Products Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {filtered.map((product) => (
+              <Card key={product.id}>
+                <CardContent className="p-4 text-center space-y-2">
+                  {product.image_url ? (
+                    <img src={product.image_url} alt={product.name_ar} className="w-full h-32 object-contain rounded-lg mb-2" />
+                  ) : (
+                    <div className="text-4xl mb-2">{product.emoji || "📦"}</div>
+                  )}
+                  <p className="font-medium text-sm truncate">{product.name_ar}</p>
+                  {product.categories && (
+                    <p className="text-xs text-muted-foreground">{product.categories.emoji} {product.categories.name_ar}</p>
+                  )}
+                  {product.price && (
+                    <p className="text-sm font-bold text-primary">{product.price} ر.س / {product.unit}</p>
+                  )}
+                  <div className="flex gap-1 justify-center pt-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(product)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(product.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          {filtered.length === 0 && (
+            <p className="text-center text-muted-foreground py-12">
+              {products.length === 0 ? "لا توجد منتجات بعد" : "لا توجد نتائج مطابقة"}
+            </p>
+          )}
+        </>
       )}
     </div>
   );

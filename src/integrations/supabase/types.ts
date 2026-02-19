@@ -259,6 +259,7 @@ export type Database = {
           name_ar: string
           name_en: string | null
           price: number | null
+          sort_order: number
           tenant_id: string
           unit: string | null
         }
@@ -272,6 +273,7 @@ export type Database = {
           name_ar: string
           name_en?: string | null
           price?: number | null
+          sort_order?: number
           tenant_id: string
           unit?: string | null
         }
@@ -285,6 +287,7 @@ export type Database = {
           name_ar?: string
           name_en?: string | null
           price?: number | null
+          sort_order?: number
           tenant_id?: string
           unit?: string | null
         }

@@ -49,6 +49,10 @@ const CategoriesPage = () => {
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Drag state
+  const dragIndexRef = useRef<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
   const fetchCategories = async () => {
     if (!tenantId) return;
     const { data } = await supabase
@@ -61,6 +65,46 @@ const CategoriesPage = () => {
   };
 
   useEffect(() => { fetchCategories(); }, [tenantId]);
+
+  // Save new order to DB
+  const saveOrder = async (reordered: any[]) => {
+    const updates = reordered.map((cat, i) =>
+      supabase.from("categories").update({ sort_order: i }).eq("id", cat.id)
+    );
+    await Promise.all(updates);
+  };
+
+  // Drag handlers
+  const handleDragStart = (index: number) => {
+    dragIndexRef.current = index;
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    const dragIndex = dragIndexRef.current;
+    if (dragIndex === null || dragIndex === dropIndex) {
+      setDragOverIndex(null);
+      return;
+    }
+    const reordered = [...categories];
+    const [moved] = reordered.splice(dragIndex, 1);
+    reordered.splice(dropIndex, 0, moved);
+    setCategories(reordered);
+    setDragOverIndex(null);
+    dragIndexRef.current = null;
+    saveOrder(reordered);
+    toast.success("تم حفظ الترتيب");
+  };
+
+  const handleDragEnd = () => {
+    setDragOverIndex(null);
+    dragIndexRef.current = null;
+  };
 
   const handleLoadDefaults = async () => {
     if (!tenantId) return;
@@ -186,7 +230,12 @@ const CategoriesPage = () => {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold">إدارة الفئات</h1>
+        <div>
+          <h1 className="text-2xl font-bold">إدارة الفئات</h1>
+          {categories.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-0.5">اسحب ↕ لتغيير الترتيب</p>
+          )}
+        </div>
         <div className="flex gap-2">
           {categories.length === 0 && (
             <Button variant="outline" onClick={handleLoadDefaults}>
@@ -285,33 +334,48 @@ const CategoriesPage = () => {
       </div>
 
       <div className="space-y-2">
-        {categories.map((cat) => (
-          <Card key={cat.id} className={cat.is_active ? "" : "opacity-50"}>
-            <CardContent className="p-4 flex items-center gap-4">
-              <GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0 cursor-grab" />
-              {cat.image_url ? (
-                <img src={cat.image_url} alt={cat.name_ar} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
-              ) : (
-                <span className="text-2xl flex-shrink-0">{cat.emoji}</span>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="font-medium">{cat.name_ar}</p>
-                {cat.name_en && <p className="text-xs text-muted-foreground">{cat.name_en}</p>}
-                {cat.unit_options && (
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {cat.unit_options.join(" · ")}
-                  </p>
+        {categories.map((cat, index) => (
+          <div
+            key={cat.id}
+            draggable
+            onDragStart={() => handleDragStart(index)}
+            onDragOver={(e) => handleDragOver(e, index)}
+            onDrop={(e) => handleDrop(e, index)}
+            onDragEnd={handleDragEnd}
+            className={cn(
+              "transition-all",
+              dragOverIndex === index && dragIndexRef.current !== index
+                ? "scale-[1.02] opacity-70"
+                : ""
+            )}
+          >
+            <Card className={cn(cat.is_active ? "" : "opacity-50", "cursor-grab active:cursor-grabbing")}>
+              <CardContent className="p-4 flex items-center gap-4">
+                <GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                {cat.image_url ? (
+                  <img src={cat.image_url} alt={cat.name_ar} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                ) : (
+                  <span className="text-2xl flex-shrink-0">{cat.emoji}</span>
                 )}
-              </div>
-              <Switch checked={cat.is_active} onCheckedChange={() => toggleActive(cat.id, cat.is_active)} />
-              <Button variant="ghost" size="icon" onClick={() => openEdit(cat)}>
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(cat.id)} className="text-destructive">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </CardContent>
-          </Card>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium">{cat.name_ar}</p>
+                  {cat.name_en && <p className="text-xs text-muted-foreground">{cat.name_en}</p>}
+                  {cat.unit_options && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {cat.unit_options.join(" · ")}
+                    </p>
+                  )}
+                </div>
+                <Switch checked={cat.is_active} onCheckedChange={() => toggleActive(cat.id, cat.is_active)} />
+                <Button variant="ghost" size="icon" onClick={() => openEdit(cat)}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => handleDelete(cat.id)} className="text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         ))}
         {categories.length === 0 && (
           <p className="text-center text-muted-foreground py-12">لا توجد فئات — أضف فئات أو حمّل الافتراضيات</p>
