@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { UserPlus, Trash2, Phone } from "lucide-react";
+import { UserPlus, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const roleLabels: Record<string, string> = {
@@ -23,7 +23,7 @@ const MembersPage = () => {
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [newMember, setNewMember] = useState({ email: "", fullName: "", phone: "", role: "member" });
+  const [newMember, setNewMember] = useState({ email: "", fullName: "", phone: "", role: "member", password: "" });
   const [submitting, setSubmitting] = useState(false);
 
   const fetchMembers = async () => {
@@ -42,30 +42,43 @@ const MembersPage = () => {
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (newMember.password.length < 6) {
+      toast.error("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+      return;
+    }
     setSubmitting(true);
 
-    // Sign up with tenant_id and role in metadata
-    const { error } = await supabase.auth.signUp({
-      email: newMember.email,
-      password: Math.random().toString(36).slice(-8) + "A1!", // Temporary password
-      options: {
-        data: {
-          full_name: newMember.fullName,
-          phone: newMember.phone,
-          tenant_id: tenantId,
-          role: newMember.role,
-        },
-      },
-    });
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
 
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-member`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({
+          email: newMember.email,
+          password: newMember.password,
+          fullName: newMember.fullName,
+          phone: newMember.phone,
+          role: newMember.role,
+        }),
+      }
+    );
+
+    const result = await res.json();
     setSubmitting(false);
 
-    if (error) {
-      toast.error("خطأ في إضافة العضو", { description: error.message });
+    if (!res.ok) {
+      toast.error("خطأ في إضافة العضو", { description: result.error });
     } else {
       toast.success("تم إضافة العضو بنجاح");
       setDialogOpen(false);
-      setNewMember({ email: "", fullName: "", phone: "", role: "member" });
+      setNewMember({ email: "", fullName: "", phone: "", role: "member", password: "" });
       fetchMembers();
     }
   };
@@ -117,6 +130,18 @@ const MembersPage = () => {
                   required
                   dir="ltr"
                   placeholder="user@email.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>كلمة المرور</Label>
+                <Input
+                  type="text"
+                  value={newMember.password}
+                  onChange={(e) => setNewMember({ ...newMember, password: e.target.value })}
+                  required
+                  dir="ltr"
+                  minLength={6}
+                  placeholder="6 أحرف على الأقل"
                 />
               </div>
               <div className="space-y-2">
