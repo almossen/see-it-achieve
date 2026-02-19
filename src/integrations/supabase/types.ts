@@ -540,6 +540,38 @@ export type Database = {
           },
         ]
       }
+      voice_synonyms: {
+        Row: {
+          created_at: string
+          from_word: string
+          id: string
+          tenant_id: string
+          to_word: string
+        }
+        Insert: {
+          created_at?: string
+          from_word: string
+          id?: string
+          tenant_id: string
+          to_word: string
+        }
+        Update: {
+          created_at?: string
+          from_word?: string
+          id?: string
+          tenant_id?: string
+          to_word?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_synonyms_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
