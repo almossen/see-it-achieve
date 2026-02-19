@@ -6,11 +6,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Eye, EyeOff, LogIn } from "lucide-react";
+import { Eye, EyeOff, LogIn, Mail, Phone } from "lucide-react";
+
+type LoginMethod = "email" | "phone";
 
 const Login = () => {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>("phone");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -18,13 +21,51 @@ const Login = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    let email = identifier;
+
+    // If logging in with phone, look up the email from profiles
+    if (loginMethod === "phone") {
+      const phone = identifier.trim();
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("phone", phone)
+        .maybeSingle();
+
+      if (profileError || !profileData) {
+        toast.error("لم يتم العثور على حساب بهذا الرقم");
+        setLoading(false);
+        return;
+      }
+
+      // Get user email from auth using a workaround: try signing in won't work,
+      // we need the email. Let's store it differently.
+      // Actually, we can get email from auth.users via edge function, but simpler:
+      // Let's look up email from the user metadata or just attempt login differently.
+      // The simplest: store email in profiles table or use Supabase admin API.
+      // For now, let's use an edge function to get email by user_id.
+      
+      // Alternative simpler approach: lookup email from profiles or user_roles
+      // Actually profiles don't store email. Let's use a lightweight edge function.
+      const { data: fnData, error: fnError } = await supabase.functions.invoke("get-user-email", {
+        body: { phone }
+      });
+
+      if (fnError || !fnData?.email) {
+        toast.error("لم يتم العثور على حساب بهذا الرقم");
+        setLoading(false);
+        return;
+      }
+      email = fnData.email;
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
-      toast.error("خطأ في تسجيل الدخول", { description: error.message });
+      toast.error("خطأ في تسجيل الدخول", { description: "البريد أو كلمة المرور غير صحيحة" });
     } else {
       toast.success("تم تسجيل الدخول بنجاح");
-      // Fetch role to redirect appropriately
       const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", data.user.id);
       const userRoles = roles?.map((r: any) => r.role) || [];
       if (userRoles.includes("admin")) {
@@ -48,15 +89,45 @@ const Login = () => {
           <CardDescription>أدخل بياناتك للوصول إلى حسابك</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Toggle between email and phone */}
+          <div className="flex gap-2 mb-5 p-1 bg-muted rounded-lg">
+            <button
+              type="button"
+              onClick={() => { setLoginMethod("phone"); setIdentifier(""); }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                loginMethod === "phone"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Phone className="h-4 w-4" />
+              رقم الجوال
+            </button>
+            <button
+              type="button"
+              onClick={() => { setLoginMethod("email"); setIdentifier(""); }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                loginMethod === "email"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Mail className="h-4 w-4" />
+              البريد الإلكتروني
+            </button>
+          </div>
+
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-base">البريد الإلكتروني</Label>
+              <Label htmlFor="identifier" className="text-base">
+                {loginMethod === "phone" ? "رقم الجوال" : "البريد الإلكتروني"}
+              </Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="example@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="identifier"
+                type={loginMethod === "email" ? "email" : "tel"}
+                placeholder={loginMethod === "phone" ? "05XXXXXXXX" : "example@email.com"}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 required
                 className="h-12 text-base"
                 dir="ltr"
