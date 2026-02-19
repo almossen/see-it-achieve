@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   Lightbulb,
+  Languages,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ const sidebarItems = [
   { to: "/admin/products", icon: Package, label: "المنتجات" },
   { to: "/admin/suggested-products", icon: Lightbulb, label: "مقترحات" },
   { to: "/admin/orders", icon: ShoppingCart, label: "الطلبات" },
+  { to: "/admin/synonyms", icon: Languages, label: "مرادفات" },
   { to: "/admin/settings", icon: Settings, label: "الإعدادات" },
 ];
 
