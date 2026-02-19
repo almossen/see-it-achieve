@@ -28,11 +28,28 @@ const MembersPage = () => {
 
   const fetchMembers = async () => {
     if (!tenantId) return;
-    const { data } = await supabase
+    const { data: profilesData } = await supabase
       .from("profiles")
-      .select("*, user_roles(role)")
+      .select("*")
       .eq("tenant_id", tenantId);
-    setMembers(data || []);
+
+    const { data: rolesData } = await supabase
+      .from("user_roles")
+      .select("user_id, role")
+      .eq("tenant_id", tenantId);
+
+    const rolesMap: Record<string, any[]> = {};
+    (rolesData || []).forEach((r) => {
+      if (!rolesMap[r.user_id]) rolesMap[r.user_id] = [];
+      rolesMap[r.user_id].push(r);
+    });
+
+    setMembers(
+      (profilesData || []).map((p) => ({
+        ...p,
+        user_roles: rolesMap[p.user_id] || [],
+      }))
+    );
     setLoading(false);
   };
 
