@@ -149,6 +149,7 @@ export type Database = {
           status: string | null
           substitute_approved: boolean | null
           substitute_image_url: string | null
+          substitute_name: string | null
         }
         Insert: {
           created_at?: string
@@ -161,6 +162,7 @@ export type Database = {
           status?: string | null
           substitute_approved?: boolean | null
           substitute_image_url?: string | null
+          substitute_name?: string | null
         }
         Update: {
           created_at?: string
@@ -173,6 +175,7 @@ export type Database = {
           status?: string | null
           substitute_approved?: boolean | null
           substitute_image_url?: string | null
+          substitute_name?: string | null
         }
         Relationships: [
           {

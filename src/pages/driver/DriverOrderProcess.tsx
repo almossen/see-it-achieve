@@ -87,7 +87,6 @@ const DriverOrderProcess = () => {
   };
 
   const handleSubstitute = async (itemId: string) => {
-    // Simple substitute - mark as substituted with a placeholder
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
@@ -95,21 +94,64 @@ const DriverOrderProcess = () => {
     input.onchange = async (e: any) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      // For now, mark as substituted without uploading
+      
+      toast.loading("جاري رفع صورة البديل...", { id: "upload" });
+      
+      const fileExt = file.name.split(".").pop();
+      const filePath = `${orderId}/${itemId}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from("substitute-images")
+        .upload(filePath, file, { upsert: true });
+      
+      if (uploadError) {
+        toast.error("خطأ في رفع الصورة", { id: "upload" });
+        return;
+      }
+      
+      const { data: urlData } = supabase.storage
+        .from("substitute-images")
+        .getPublicUrl(filePath);
+      
+      const imageUrl = urlData.publicUrl;
+      
+      // Prompt driver for substitute name
+      const name = prompt("اسم المنتج البديل:");
+      
       await supabase
         .from("order_items")
-        .update({ status: "substituted", substitute_image_url: "pending_upload" })
+        .update({ 
+          status: "substituted", 
+          substitute_image_url: imageUrl,
+          substitute_name: name || "بديل",
+          substitute_approved: null 
+        })
         .eq("id", itemId);
-      setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, status: "substituted", substitute_image_url: "pending_upload" } : i)));
-      toast.success("تم وضع علامة بديل");
+      
+      setItems((prev) => prev.map((i) => 
+        i.id === itemId 
+          ? { ...i, status: "substituted", substitute_image_url: imageUrl } 
+          : i
+      ));
+      toast.success("تم رفع صورة البديل بنجاح ✅", { id: "upload" });
     };
     input.click();
   };
 
   const completeOrder = async () => {
     if (!orderId) return;
+    
+    // Check if any substitutes are pending approval
+    const pendingSubstitutes = items.filter(
+      (i) => i.status === "substituted" && i.substitute_approved === null
+    );
+    if (pendingSubstitutes.length > 0) {
+      toast.error("يوجد بدائل لم يوافق عليها العميل بعد، انتظر موافقته أولاً");
+      return;
+    }
+    
     setCompleting(true);
-    const foundItems = items.filter((i) => i.status === "found" || i.status === "substituted");
+    const foundItems = items.filter((i) => i.status === "found" || (i.status === "substituted" && i.substitute_approved === true));
     const total = foundItems.reduce((sum, i) => sum + (i.price || 0) * i.quantity, 0);
 
     const { error } = await supabase
