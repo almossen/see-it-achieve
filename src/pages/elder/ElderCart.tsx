@@ -22,19 +22,30 @@ const ElderCart = () => {
   useEffect(() => {
     if (!tenantId) return;
     const fetchDrivers = async () => {
-      const [{ data: driversData }, { data: tenantData }] = await Promise.all([
+      const [{ data: driversData }, { data: tenantData }, { data: profilesData }] = await Promise.all([
         supabase
           .from("drivers")
-          .select("id, profiles!drivers_user_id_fkey(full_name), whatsapp_number")
+          .select("id, user_id, whatsapp_number")
           .eq("tenant_id", tenantId)
           .eq("is_available", true),
         supabase
           .from("tenants")
-          .select("default_driver_id")
+          .select("*")
           .eq("id", tenantId)
           .single(),
+        supabase
+          .from("profiles")
+          .select("user_id, full_name")
+          .eq("tenant_id", tenantId),
       ]);
-      const availableDrivers = driversData || [];
+
+      const profilesMap: Record<string, string> = {};
+      (profilesData || []).forEach((p: any) => { profilesMap[p.user_id] = p.full_name; });
+
+      const availableDrivers = (driversData || []).map((d: any) => ({
+        ...d,
+        full_name: profilesMap[d.user_id] || "سائق",
+      }));
       setDrivers(availableDrivers);
 
       // Auto-assign: if 1 driver, select it. If multiple, use default from settings.
@@ -201,7 +212,7 @@ const ElderCart = () => {
             <SelectContent>
               {drivers.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
-                  {d.profiles?.full_name || "سائق"}
+                  {d.full_name || "سائق"}
                 </SelectItem>
               ))}
             </SelectContent>
