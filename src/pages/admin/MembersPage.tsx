@@ -141,17 +141,19 @@ const MembersPage = () => {
                   placeholder="أحمد محمد"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>البريد الإلكتروني</Label>
-                <Input
-                  type="email"
-                  value={newMember.email}
-                  onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
-                  required
-                  dir="ltr"
-                  placeholder="user@email.com"
-                />
-              </div>
+              {newMember.role !== "elder" && (
+                <div className="space-y-2">
+                  <Label>البريد الإلكتروني</Label>
+                  <Input
+                    type="email"
+                    value={newMember.email}
+                    onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
+                    required
+                    dir="ltr"
+                    placeholder="user@email.com"
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>كلمة المرور</Label>
                 <Input
@@ -169,13 +171,14 @@ const MembersPage = () => {
                 <Input
                   value={newMember.phone}
                   onChange={(e) => setNewMember({ ...newMember, phone: e.target.value })}
+                  required={newMember.role === "elder"}
                   dir="ltr"
                   placeholder="05XXXXXXXX"
                 />
               </div>
               <div className="space-y-2">
                 <Label>الدور</Label>
-                <Select value={newMember.role} onValueChange={(v) => setNewMember({ ...newMember, role: v })}>
+                <Select value={newMember.role} onValueChange={(v) => setNewMember({ ...newMember, role: v, email: v === "elder" ? "" : newMember.email })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
