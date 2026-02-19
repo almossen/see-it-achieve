@@ -38,40 +38,68 @@ const DriverOrderProcess = () => {
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
 
+  const fetchItems = async () => {
+    if (!orderId) return;
+    const { data: itemsData } = await supabase.from("order_items").select("*").eq("order_id", orderId);
+    const orderItems = itemsData || [];
+    const productIds = orderItems.map((i: any) => i.product_id).filter(Boolean);
+    let productsMap: Record<string, any> = {};
+    if (productIds.length > 0) {
+      const { data: productsData } = await supabase
+        .from("products")
+        .select("id, image_url, unit")
+        .in("id", productIds);
+      (productsData || []).forEach((p: any) => { productsMap[p.id] = p; });
+    }
+    setItems(orderItems.map((i: any) => ({
+      ...i,
+      product_image: productsMap[i.product_id]?.image_url || null,
+      product_unit: productsMap[i.product_id]?.unit || null,
+    })));
+  };
+
   useEffect(() => {
     const fetchOrder = async () => {
       if (!orderId) return;
-      const [orderRes, itemsRes] = await Promise.all([
-        supabase.from("orders").select("*").eq("id", orderId).single(),
-        supabase.from("order_items").select("*").eq("order_id", orderId),
-      ]);
-      if (orderRes.data) {
-        setOrder(orderRes.data);
-        if (orderRes.data.status === "assigned") {
+      const { data: orderData } = await supabase.from("orders").select("*").eq("id", orderId).single();
+      if (orderData) {
+        setOrder(orderData);
+        if (orderData.status === "assigned") {
           await supabase.from("orders").update({ status: "processing" }).eq("id", orderId);
         }
       }
-
-      // Fetch product details (images, units)
-      const orderItems = itemsRes.data || [];
-      const productIds = orderItems.map((i: any) => i.product_id).filter(Boolean);
-      let productsMap: Record<string, any> = {};
-      if (productIds.length > 0) {
-        const { data: productsData } = await supabase
-          .from("products")
-          .select("id, image_url, unit")
-          .in("id", productIds);
-        (productsData || []).forEach((p: any) => { productsMap[p.id] = p; });
-      }
-
-      setItems(orderItems.map((i: any) => ({
-        ...i,
-        product_image: productsMap[i.product_id]?.image_url || null,
-        product_unit: productsMap[i.product_id]?.unit || null,
-      })));
+      await fetchItems();
       setLoading(false);
     };
     fetchOrder();
+  }, [orderId]);
+
+  // Realtime: listen for substitute approval changes
+  useEffect(() => {
+    if (!orderId) return;
+    const channel = supabase
+      .channel(`order-items-${orderId}`)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "order_items",
+        filter: `order_id=eq.${orderId}`,
+      }, (payload) => {
+        const updated = payload.new as any;
+        if (updated.substitute_approved !== null) {
+          toast(
+            updated.substitute_approved
+              ? `✅ العميل وافق على بديل "${updated.substitute_name || updated.product_name}"`
+              : `❌ العميل رفض بديل "${updated.substitute_name || updated.product_name}"`,
+            { duration: 5000 }
+          );
+        }
+        setItems((prev) => prev.map((i) =>
+          i.id === updated.id ? { ...i, ...updated } : i
+        ));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [orderId]);
 
   const updateItemStatus = async (itemId: string, status: ItemStatus) => {
@@ -283,6 +311,20 @@ const DriverOrderProcess = () => {
                     بديل
                   </Button>
                 </div>
+
+                {/* Substitute approval status */}
+                {currentStatus === "substituted" && (
+                  <div className={cn(
+                    "flex items-center gap-2 p-2 rounded-lg text-sm font-medium",
+                    item.substitute_approved === null && "bg-yellow-50 text-yellow-800 border border-yellow-200",
+                    item.substitute_approved === true && "bg-green-50 text-green-800 border border-green-200",
+                    item.substitute_approved === false && "bg-red-50 text-red-800 border border-red-200",
+                  )}>
+                    {item.substitute_approved === null && "⏳ بانتظار رد العميل على البديل..."}
+                    {item.substitute_approved === true && "✅ العميل وافق على البديل"}
+                    {item.substitute_approved === false && "❌ العميل رفض البديل"}
+                  </div>
+                )}
               </CardContent>
             </Card>
           );
