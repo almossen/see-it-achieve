@@ -21,11 +21,27 @@ const DriversPage = () => {
 
   const fetchDrivers = async () => {
     if (!tenantId) return;
-    const { data } = await supabase
+    // Fetch drivers and profiles separately since there's no FK between them
+    const { data: driversData } = await supabase
       .from("drivers")
-      .select("*, profiles!drivers_user_id_fkey(full_name, phone)")
+      .select("*")
       .eq("tenant_id", tenantId);
-    setDrivers(data || []);
+
+    if (driversData && driversData.length > 0) {
+      const userIds = driversData.map((d) => d.user_id);
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, phone")
+        .in("user_id", userIds);
+
+      const profileMap = Object.fromEntries(
+        (profilesData || []).map((p) => [p.user_id, p])
+      );
+
+      setDrivers(driversData.map((d) => ({ ...d, profiles: profileMap[d.user_id] || null })));
+    } else {
+      setDrivers([]);
+    }
     setLoading(false);
   };
 
@@ -33,35 +49,40 @@ const DriversPage = () => {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-
-    // Create user with driver role
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: form.email,
-      password: form.password,
-      options: {
-        data: {
-          full_name: form.fullName,
-          phone: form.phone,
-          tenant_id: tenantId,
-          role: "driver",
-        },
-      },
-    });
-
-    if (authError) {
-      toast.error("خطأ", { description: authError.message });
-      setSubmitting(false);
+    if (form.password.length < 6) {
+      toast.error("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
       return;
     }
+    setSubmitting(true);
 
-    // Create driver record
-    if (authData.user) {
-      await supabase.from("drivers").insert({
-        user_id: authData.user.id,
-        tenant_id: tenantId!,
-        whatsapp_number: form.whatsapp || form.phone,
-      });
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-driver`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({
+          email: form.email,
+          password: form.password,
+          fullName: form.fullName,
+          phone: form.phone,
+          whatsapp: form.whatsapp || form.phone,
+        }),
+      }
+    );
+
+    const result = await res.json();
+
+    if (!res.ok) {
+      toast.error("خطأ", { description: result.error });
+      setSubmitting(false);
+      return;
     }
 
     setSubmitting(false);
