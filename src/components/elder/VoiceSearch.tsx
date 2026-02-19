@@ -110,6 +110,56 @@ function splitIntoItems(raw: string): string[] {
 // Base fallback units in case DB fetch fails
 const BASE_UNITS = ["كرتون", "كيلو", "حبة", "حزمة", "علبة", "كيس", "لتر", "باكيت", "صندوق", "ربطة", "طبق", "قطعة"];
 
+// Common Arabic synonyms → canonical name (used before DB search)
+const ARABIC_SYNONYMS: Record<string, string> = {
+  // خضار
+  بندورة: "طماطم",
+  بنادورة: "طماطم",
+  "طماطة": "طماطم",
+  كوسة: "كوسا",
+  كوسى: "كوسا",
+  باذنجان: "بادنجان",
+  "فلفل رومي": "فلفل",
+  سبانخ: "سبانج",
+  فاصولياء: "فاصوليا",
+  فاصوليا: "فاصوليا",
+  لوبياء: "لوبيا",
+  بصلة: "بصل",
+  ثومة: "ثوم",
+  جزرة: "جزر",
+  بطاطا: "بطاطس",
+  "بطاطا مقلية": "بطاطس",
+  // فواكه
+  موز: "موز",
+  موزة: "موز",
+  تفاحة: "تفاح",
+  برتقالة: "برتقال",
+  ليمونة: "ليمون",
+  مانجة: "مانجو",
+  فراولة: "فراولة",
+  فريز: "فراولة",
+  // بروتين
+  دجاج: "دجاج",
+  فروج: "دجاج",
+  فراخ: "دجاج",
+  // ألبان وبيض
+  بيضة: "بيض",
+  لبن: "حليب",
+  حليب: "حليب",
+  زبادي: "زبادي",
+  يوغرت: "زبادي",
+};
+
+// Apply synonym map: replace known synonyms with canonical names
+function applySynonyms(text: string): string {
+  let result = text;
+  // Try full phrase first, then word by word
+  if (ARABIC_SYNONYMS[result]) return ARABIC_SYNONYMS[result];
+  const words = result.split(/\s+/);
+  const mapped = words.map(w => ARABIC_SYNONYMS[w] ?? w);
+  return mapped.join(" ");
+}
+
 // Normalize Arabic text: unify hamza/alef variants for better matching
 function normalizeArabic(text: string): string {
   return text
@@ -162,14 +212,18 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
         const { productQuery, detectedUnit, detectedQuantity } = parseVoiceQuery(segment, knownUnits);
         if (!productQuery) continue;
 
-        const normalizedQuery = normalizeArabic(productQuery);
+        // Apply synonyms before normalization (e.g. بندورة → طماطم)
+        const resolvedQuery = applySynonyms(productQuery);
+        const normalizedQuery = normalizeArabic(resolvedQuery);
         // Split into individual words for broader DB search
         const words = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
 
-        // Build OR: full phrase + each individual word (covers hamza/alef differences)
+        // Build OR: original + resolved synonym + each word
         const orParts = [
           `name_ar.ilike.%${productQuery}%`,
           `name_en.ilike.%${productQuery}%`,
+          `name_ar.ilike.%${resolvedQuery}%`,
+          `name_en.ilike.%${resolvedQuery}%`,
           ...words.map(w => `name_ar.ilike.%${w}%`),
           ...words.map(w => `name_en.ilike.%${w}%`),
         ];
