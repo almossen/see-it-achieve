@@ -51,9 +51,20 @@ Deno.serve(async (req) => {
     const validRoles = ["admin", "elder", "member", "driver"];
     const assignRole = validRoles.includes(role) ? role : "member";
 
+    // For elder role, auto-generate email if not provided
+    let userEmail = email;
+    if (!userEmail && assignRole === "elder") {
+      const cleanPhone = (phone || "").replace(/\D/g, "");
+      userEmail = `elder_${cleanPhone || crypto.randomUUID().slice(0, 8)}@elder.local`;
+    }
+
+    if (!userEmail) {
+      return new Response(JSON.stringify({ error: "Email is required for non-elder roles" }), { status: 400, headers: corsHeaders });
+    }
+
     // Create user with admin API
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email,
+      email: userEmail,
       password,
       email_confirm: true,
       user_metadata: {

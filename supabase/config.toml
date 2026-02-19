@@ -5,3 +5,15 @@ verify_jwt = false
 
 [functions.translate-product]
 verify_jwt = false
+
+[functions.create-member]
+verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.get-user-email]
+verify_jwt = false
+
+[functions.create-driver]
+verify_jwt = false
