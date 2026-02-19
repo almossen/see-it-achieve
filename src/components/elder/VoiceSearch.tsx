@@ -88,6 +88,17 @@ function parseVoiceQuery(raw: string): { productQuery: string; detectedUnit: str
   return { productQuery: text, detectedUnit, detectedQuantity };
 }
 
+// Split a voice sentence into individual product segments using Arabic "و" as delimiter
+function splitIntoItems(raw: string): string[] {
+  const normalized = raw
+    .replace(/\s+وكمان\s*/g, "|")
+    .replace(/\s+وأيضا?\s*/g, "|")
+    .replace(/\s+و\s+/g, "|")           // "و" with spaces on both sides
+    .replace(/\s+و(?=[ا-ي\d])/g, "|")  // "و" directly attached to next Arabic word
+    .replace(/[،,]\s*/g, "|");
+  return normalized.split("|").map(s => s.trim()).filter(Boolean);
+}
+
 const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   const { tenantId, user } = useAuth();
   const { addItem, updateQuantity } = useCart();
@@ -100,60 +111,72 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   const handleVoiceResultRef = useRef<(query: string) => Promise<void>>();
 
   useEffect(() => {
-    handleVoiceResultRef.current = async (query: string) => {
-      if (!tenantId || !query.trim()) return;
+    handleVoiceResultRef.current = async (fullQuery: string) => {
+      if (!tenantId || !fullQuery.trim()) return;
 
-      const { productQuery, detectedUnit, detectedQuantity } = parseVoiceQuery(query);
+      const segments = splitIntoItems(fullQuery);
 
-      const { data } = await supabase
-        .from("products")
-        .select("*")
-        .eq("tenant_id", tenantId)
-        .eq("is_active", true)
-        .or(`name_ar.ilike.%${productQuery}%,name_en.ilike.%${productQuery}%`)
-        .limit(5);
+      for (const segment of segments) {
+        const { productQuery, detectedUnit, detectedQuantity } = parseVoiceQuery(segment);
+        if (!productQuery) continue;
 
-      if (data && data.length > 0) {
-        const product = data[0];
-        const unitLabel = detectedUnit || product.unit || "";
-        addItem({
-          product_id: product.id,
-          name: product.name_ar,
-          emoji: product.emoji,
-          price: product.price,
-          unit: unitLabel,
-          image_url: product.image_url,
-        });
-        // Set quantity if more than 1
-        if (detectedQuantity > 1) {
-          updateQuantity(product.id, detectedQuantity);
+        const { data } = await supabase
+          .from("products")
+          .select("*")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .or(`name_ar.ilike.%${productQuery}%,name_en.ilike.%${productQuery}%`)
+          .limit(5);
+
+        if (data && data.length > 0) {
+          const product = data[0];
+          const unitLabel = detectedUnit || product.unit || "";
+          addItem({
+            product_id: product.id,
+            name: product.name_ar,
+            emoji: product.emoji,
+            price: product.price,
+            unit: unitLabel,
+            image_url: product.image_url,
+          });
+          if (detectedQuantity > 1) {
+            updateQuantity(product.id, detectedQuantity);
+          }
+          const qtyLabel = detectedQuantity > 1 ? `${detectedQuantity} ` : "";
+          setAddedItems(prev => [...prev, `✅ ${qtyLabel}${unitLabel} ${product.name_ar}`]);
+        } else {
+          const customId = `custom_${Date.now()}_${Math.random()}`;
+          const unitLabel = detectedUnit || "حبة";
+          addItem({
+            product_id: customId,
+            name: productQuery,
+            emoji: "📝",
+            unit: unitLabel,
+            is_custom: true,
+          });
+          if (detectedQuantity > 1) {
+            updateQuantity(customId, detectedQuantity);
+          }
+          const qtyLabel = detectedQuantity > 1 ? `${detectedQuantity} ` : "";
+          setAddedItems(prev => [...prev, `📝 ${qtyLabel}${unitLabel} ${productQuery} — غير موجود بالقائمة`]);
+
+          await supabase.from("suggested_products").insert({
+            tenant_id: tenantId,
+            name_ar: productQuery,
+            unit: detectedUnit,
+            suggested_by: user?.id,
+          });
         }
-        const qtyLabel = detectedQuantity > 1 ? `${detectedQuantity} ` : "";
-        setAddedItems(prev => [...prev, `✅ ${qtyLabel}${unitLabel} ${product.name_ar}`]);
-        toast.success(`تمت إضافة ${detectedQuantity > 1 ? detectedQuantity + " " : ""}${product.name_ar} للسلة`);
+      }
+
+      if (segments.length > 1) {
+        toast.success(`تمت إضافة ${segments.length} منتجات للسلة`);
       } else {
-        const customId = `custom_${Date.now()}`;
-        const unitLabel = detectedUnit || "حبة";
-        addItem({
-          product_id: customId,
-          name: productQuery,
-          emoji: "📝",
-          unit: unitLabel,
-          is_custom: true,
-        });
-        if (detectedQuantity > 1) {
-          updateQuantity(customId, detectedQuantity);
+        const seg = segments[0];
+        if (seg) {
+          const { productQuery } = parseVoiceQuery(seg);
+          toast.success(`تمت إضافة ${productQuery} للسلة`);
         }
-        const qtyLabel = detectedQuantity > 1 ? `${detectedQuantity} ` : "";
-        setAddedItems(prev => [...prev, `📝 ${qtyLabel}${unitLabel} ${productQuery} — غير موجود بالقائمة`]);
-        toast.info(`تمت إضافة "${productQuery}" كمنتج مخصص`);
-
-        await supabase.from("suggested_products").insert({
-          tenant_id: tenantId,
-          name_ar: productQuery,
-          unit: detectedUnit,
-          suggested_by: user?.id,
-        });
       }
     };
   }, [tenantId, user, addItem, updateQuantity]);
