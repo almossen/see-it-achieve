@@ -79,6 +79,15 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: createError.message }), { status: 400, headers: corsHeaders });
     }
 
+    // If role is driver, also insert into drivers table
+    if (assignRole === "driver") {
+      await supabaseAdmin.from("drivers").insert({
+        user_id: newUser.user.id,
+        tenant_id: callerProfile.tenant_id,
+        whatsapp_number: phone || null,
+      });
+    }
+
     return new Response(JSON.stringify({ success: true, userId: newUser.user.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
