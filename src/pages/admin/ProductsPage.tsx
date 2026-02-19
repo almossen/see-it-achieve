@@ -113,8 +113,7 @@ const ProductsPage = () => {
     reader.onload = (e) => {
       const base64 = e.target?.result as string;
       setImagePreview(base64);
-      // Trigger AI recognition automatically
-      recognizeProduct(base64);
+      // AI recognition is now manual via button only
     };
     reader.readAsDataURL(file);
   };
@@ -142,21 +141,24 @@ const ProductsPage = () => {
 
     if (imageUrl) payload.image_url = imageUrl;
 
+    let hasError = false;
     if (editingId) {
       const { tenant_id, ...updatePayload } = payload;
       const { error } = await supabase.from("products").update(updatePayload).eq("id", editingId);
-      if (error) toast.error("خطأ", { description: error.message });
+      if (error) { toast.error("خطأ", { description: error.message }); hasError = true; }
       else toast.success("تم التحديث");
     } else {
       const { error } = await supabase.from("products").insert(payload);
-      if (error) toast.error("خطأ", { description: error.message });
+      if (error) { toast.error("خطأ", { description: error.message }); hasError = true; }
       else toast.success("تمت الإضافة");
     }
 
     setSubmitting(false);
-    setDialogOpen(false);
-    resetForm();
-    fetchData();
+    if (!hasError) {
+      resetForm();
+      setDialogOpen(false);
+      await fetchData();
+    }
   };
 
   const resetForm = () => {
@@ -321,13 +323,13 @@ const ProductsPage = () => {
                       <div className="absolute bottom-2 right-2">
                         <Button
                           type="button"
-                          variant="secondary"
+                          variant="default"
                           size="sm"
-                          className="gap-1 h-7 text-xs"
-                          onClick={() => recognizeProduct(imagePreview)}
+                          className="gap-1 h-8 text-xs"
+                          onClick={() => recognizeProduct(imagePreview!)}
                         >
                           <Sparkles className="h-3 w-3" />
-                          تعرّف مجدداً
+                          تعرّف بالذكاء الاصطناعي
                         </Button>
                       </div>
                     )}
