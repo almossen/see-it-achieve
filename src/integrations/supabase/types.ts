@@ -429,6 +429,44 @@ export type Database = {
           },
         ]
       }
+      suggested_products: {
+        Row: {
+          created_at: string
+          id: string
+          name_ar: string
+          status: string
+          suggested_by: string | null
+          tenant_id: string
+          unit: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name_ar: string
+          status?: string
+          suggested_by?: string | null
+          tenant_id: string
+          unit?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name_ar?: string
+          status?: string
+          suggested_by?: string | null
+          tenant_id?: string
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suggested_products_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           created_at: string

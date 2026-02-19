@@ -16,6 +16,7 @@ import MembersPage from "./pages/admin/MembersPage";
 import DriversPage from "./pages/admin/DriversPage";
 import CategoriesPage from "./pages/admin/CategoriesPage";
 import ProductsPage from "./pages/admin/ProductsPage";
+import SuggestedProductsPage from "./pages/admin/SuggestedProductsPage";
 import OrdersPage from "./pages/admin/OrdersPage";
 import SettingsPage from "./pages/admin/SettingsPage";
 import ElderLayout from "./layouts/ElderLayout";
@@ -56,6 +57,7 @@ const App = () => (
                   <Route path="drivers" element={<DriversPage />} />
                   <Route path="categories" element={<CategoriesPage />} />
                   <Route path="products" element={<ProductsPage />} />
+                  <Route path="suggested-products" element={<SuggestedProductsPage />} />
                   <Route path="orders" element={<OrdersPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                 </Route>
