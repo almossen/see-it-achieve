@@ -2,10 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
-import { Button } from "@/components/ui/button";
-import { Mic, MicOff, X } from "lucide-react";
+import { Mic, MicOff, X, Check } from "lucide-react";
 import { toast } from "sonner";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface VoiceSearchProps {
   onClose: () => void;
@@ -17,7 +16,6 @@ const KNOWN_UNITS = ["كرتون", "كيلو", "حبة", "حزمة", "علبة",
 function parseVoiceQuery(raw: string): { productQuery: string; detectedUnit: string | null } {
   const trimmed = raw.trim();
   for (const unit of KNOWN_UNITS) {
-    // "كرتون خيار" or "خيار كرتون"
     if (trimmed.startsWith(unit + " ")) {
       return { productQuery: trimmed.slice(unit.length + 1).trim(), detectedUnit: unit };
     }
@@ -29,13 +27,11 @@ function parseVoiceQuery(raw: string): { productQuery: string; detectedUnit: str
 }
 
 const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
-  const { tenantId } = useAuth();
+  const { tenantId, user } = useAuth();
   const { addItem } = useCart();
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [results, setResults] = useState<any[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [detectedUnit, setDetectedUnit] = useState<string | null>(null);
+  const [addedItems, setAddedItems] = useState<string[]>([]);
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -58,7 +54,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
       setTranscript(finalTranscript);
 
       if (event.results[event.results.length - 1].isFinal) {
-        searchProducts(finalTranscript);
+        handleVoiceResult(finalTranscript);
       }
     };
 
@@ -75,29 +71,58 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
     };
 
     recognitionRef.current = recognition;
-
-    return () => {
-      recognition.abort();
-    };
+    return () => { recognition.abort(); };
   }, []);
 
-  const searchProducts = async (query: string) => {
+  const handleVoiceResult = async (query: string) => {
     if (!tenantId || !query.trim()) return;
-    setSearching(true);
 
-    const { productQuery, detectedUnit: unit } = parseVoiceQuery(query);
-    setDetectedUnit(unit);
+    const { productQuery, detectedUnit } = parseVoiceQuery(query);
 
+    // Search for existing product
     const { data } = await supabase
       .from("products")
       .select("*")
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .or(`name_ar.ilike.%${productQuery}%,name_en.ilike.%${productQuery}%`)
-      .limit(10);
+      .limit(5);
 
-    setResults(data || []);
-    setSearching(false);
+    if (data && data.length > 0) {
+      // Found a match - add the best match directly
+      const product = data[0];
+      addItem({
+        product_id: product.id,
+        name: product.name_ar,
+        emoji: product.emoji,
+        price: product.price,
+        unit: detectedUnit || product.unit,
+        image_url: product.image_url,
+      });
+      const unitLabel = detectedUnit || product.unit || "";
+      setAddedItems(prev => [...prev, `✅ ${product.name_ar} (${unitLabel})`]);
+      toast.success(`تمت إضافة ${product.name_ar} للسلة`);
+    } else {
+      // Product not found - add as custom item with the spoken name
+      const customId = `custom_${Date.now()}`;
+      addItem({
+        product_id: customId,
+        name: productQuery,
+        emoji: "📝",
+        unit: detectedUnit || "حبة",
+        is_custom: true,
+      });
+      setAddedItems(prev => [...prev, `📝 ${productQuery} (${detectedUnit || "حبة"}) - غير موجود بالقائمة`]);
+      toast.info(`تمت إضافة "${productQuery}" كمنتج مخصص`);
+
+      // Save to suggested_products for admin review
+      await supabase.from("suggested_products").insert({
+        tenant_id: tenantId,
+        name_ar: productQuery,
+        unit: detectedUnit,
+        suggested_by: user?.id,
+      });
+    }
   };
 
   const toggleListening = () => {
@@ -105,23 +130,9 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
       recognitionRef.current?.stop();
     } else {
       setTranscript("");
-      setResults([]);
-      setDetectedUnit(null);
       recognitionRef.current?.start();
       setIsListening(true);
     }
-  };
-
-  const handleAddProduct = (product: any) => {
-    addItem({
-      product_id: product.id,
-      name: product.name_ar,
-      emoji: product.emoji,
-      price: product.price,
-      unit: detectedUnit || product.unit,
-    });
-    const unitLabel = detectedUnit || product.unit || "";
-    toast.success(`تمت إضافة ${product.name_ar} (${unitLabel}) للسلة`);
   };
 
   return (
@@ -133,7 +144,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
     >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border">
-        <h2 className="text-xl font-bold">🎤 البحث الصوتي</h2>
+        <h2 className="text-xl font-bold">🎤 أطلب بصوتك</h2>
         <button onClick={onClose} className="p-2">
           <X className="h-6 w-6" />
         </button>
@@ -156,8 +167,9 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
           )}
         </button>
         <p className="text-lg mt-6 text-center font-medium">
-          {isListening ? "جاري الاستماع... تكلّم الآن" : "اضغط للتحدث"}
+          {isListening ? "جاري الاستماع... تكلّم الآن" : "اضغط وقل اسم المنتج"}
         </p>
+        <p className="text-sm text-muted-foreground mt-1">مثال: "كرتون خيار" أو "كيلو طماطم"</p>
 
         {/* Transcript */}
         {transcript && (
@@ -167,43 +179,26 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
             className="mt-4 bg-muted rounded-xl p-4 w-full max-w-sm text-center"
           >
             <p className="text-base">🗣️ {transcript}</p>
-            {detectedUnit && (
-              <p className="text-sm text-primary font-bold mt-1">📦 الوحدة: {detectedUnit}</p>
-            )}
           </motion.div>
         )}
       </div>
 
-      {/* Results */}
-      {(results.length > 0 || searching) && (
+      {/* Added items list */}
+      {addedItems.length > 0 && (
         <motion.div
           initial={{ y: 100 }}
           animate={{ y: 0 }}
-          className="bg-card border-t border-border rounded-t-3xl p-4 max-h-[50vh] overflow-y-auto"
+          className="bg-card border-t border-border rounded-t-3xl p-4 max-h-[40vh] overflow-y-auto"
         >
-          <h3 className="text-lg font-bold mb-3">
-            {searching ? "جاري البحث..." : `نتائج البحث (${results.length})`}
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
-            {results.map((product) => (
-              <motion.button
-                key={product.id}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleAddProduct(product)}
-                className="bg-muted rounded-xl p-4 text-center space-y-2 min-h-[100px] flex flex-col items-center justify-center"
-              >
-                <span className="text-4xl">{product.emoji || "📦"}</span>
-                <p className="text-sm font-bold">{product.name_ar}</p>
-                {product.price && (
-                  <p className="text-xs text-primary font-bold">{product.price} ر.س</p>
-                )}
-                <span className="text-xs text-muted-foreground">اضغط للإضافة ➕</span>
-              </motion.button>
+          <h3 className="text-lg font-bold mb-3">المنتجات المضافة ({addedItems.length})</h3>
+          <div className="space-y-2">
+            {addedItems.map((item, i) => (
+              <div key={i} className="bg-muted rounded-xl p-3 text-sm font-medium flex items-center gap-2">
+                <span>{item}</span>
+              </div>
             ))}
           </div>
-          {results.length === 0 && !searching && transcript && (
-            <p className="text-center text-muted-foreground py-6">لم يتم العثور على منتجات مطابقة</p>
-          )}
+          <p className="text-xs text-muted-foreground mt-3 text-center">اضغط على المايك لإضافة منتج آخر</p>
         </motion.div>
       )}
     </motion.div>

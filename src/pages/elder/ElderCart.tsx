@@ -88,7 +88,7 @@ const ElderCart = () => {
     // Insert order items
     const orderItems = items.map((item) => ({
       order_id: order.id,
-      product_id: item.product_id,
+      product_id: item.is_custom ? null : item.product_id,
       product_name: item.name,
       quantity: item.quantity,
       price: item.price,

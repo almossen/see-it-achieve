@@ -7,6 +7,8 @@ interface CartItem {
   price?: number;
   unit?: string;
   quantity: number;
+  image_url?: string | null;
+  is_custom?: boolean;
 }
 
 interface CartContextType {

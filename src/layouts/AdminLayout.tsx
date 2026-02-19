@@ -13,6 +13,7 @@ import {
   Bell,
   Menu,
   X,
+  Lightbulb,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ const sidebarItems = [
   { to: "/admin/drivers", icon: Truck, label: "السائقين" },
   { to: "/admin/categories", icon: FolderOpen, label: "الفئات" },
   { to: "/admin/products", icon: Package, label: "المنتجات" },
+  { to: "/admin/suggested-products", icon: Lightbulb, label: "مقترحات" },
   { to: "/admin/orders", icon: ShoppingCart, label: "الطلبات" },
   { to: "/admin/settings", icon: Settings, label: "الإعدادات" },
 ];
@@ -180,7 +182,7 @@ const AdminLayout = () => {
 
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-card border-t border-border h-16 flex items-center justify-around px-2">
-        {sidebarItems.slice(0, 5).map((item) => (
+        {sidebarItems.slice(0, 6).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
