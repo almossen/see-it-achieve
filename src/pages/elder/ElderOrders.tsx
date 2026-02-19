@@ -44,18 +44,50 @@ const ElderOrders = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [orderItems, setOrderItems] = useState<Record<string, any[]>>({});
 
-  useEffect(() => {
+  const fetchOrders = async () => {
     if (!user) return;
-    supabase
+    const { data } = await supabase
       .from("orders")
       .select("*")
       .eq("created_by", user.id)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setOrders(data || []);
-        setLoading(false);
-      });
+      .order("created_at", { ascending: false });
+    setOrders(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchOrders();
   }, [user]);
+
+  // Realtime: notify elder when driver suggests a substitute
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel("elder-substitute-notifications")
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "order_items",
+      }, (payload) => {
+        const updated = payload.new as any;
+        // Only notify when status changes to substituted (driver suggested a substitute)
+        if (updated.status === "substituted" && updated.substitute_image_url) {
+          toast.info(
+            `📷 السائق اقترح بديلاً لـ "${updated.product_name}"`,
+            { duration: 8000 }
+          );
+          // Refresh items if this order is expanded
+          if (expandedId) {
+            supabase.from("order_items").select("*").eq("order_id", expandedId)
+              .then(({ data }) => {
+                if (data) setOrderItems((prev) => ({ ...prev, [expandedId]: data }));
+              });
+          }
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user, expandedId]);
 
   const toggleExpand = async (orderId: string) => {
     if (expandedId === orderId) {
