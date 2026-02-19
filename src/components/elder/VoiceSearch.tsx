@@ -10,14 +10,6 @@ interface VoiceSearchProps {
   onClose: () => void;
 }
 
-// Known units with dual forms mapped to singular
-const UNIT_MAP: Record<string, string> = {
-  كرتونين: "كرتون", كيلوين: "كيلو", حبتين: "حبة", حزمتين: "حزمة",
-  علبتين: "علبة", كيسين: "كيس", لترين: "لتر", صندوقين: "صندوق",
-  طبقين: "طبق", قطعتين: "قطعة", ربطتين: "ربطة",
-};
-const KNOWN_UNITS = ["كرتون", "كيلو", "حبة", "حزمة", "علبة", "كيس", "لتر", "باكيت", "صندوق", "ربطة", "طبق", "قطعة"];
-
 // Arabic number words → numeric value
 const ARABIC_NUMBERS: Record<string, number> = {
   واحد: 1, واحدة: 1,
@@ -32,12 +24,27 @@ const ARABIC_NUMBERS: Record<string, number> = {
   عشرة: 10, عشر: 10,
 };
 
-function parseVoiceQuery(raw: string): { productQuery: string; detectedUnit: string | null; detectedQuantity: number } {
+// Generate Arabic dual form for a unit automatically
+function toDual(unit: string): string {
+  if (unit.endsWith("ة")) return unit.slice(0, -1) + "تين";
+  return unit + "ين";
+}
+
+function parseVoiceQuery(
+  raw: string,
+  knownUnits: string[]
+): { productQuery: string; detectedUnit: string | null; detectedQuantity: number } {
   let text = raw.trim();
   let detectedUnit: string | null = null;
   let detectedQuantity = 1;
 
-  // 1. Extract leading Arabic number word (e.g. "ثلاث كرتون خيار")
+  // Build dynamic dual map from known units
+  const unitMap: Record<string, string> = {};
+  for (const unit of knownUnits) {
+    unitMap[toDual(unit)] = unit;
+  }
+
+  // 1. Extract leading Arabic number word
   for (const [word, num] of Object.entries(ARABIC_NUMBERS)) {
     if (text.startsWith(word + " ")) {
       detectedQuantity = num;
@@ -46,19 +53,19 @@ function parseVoiceQuery(raw: string): { productQuery: string; detectedUnit: str
     }
   }
 
-  // 2. Extract leading numeric digit (e.g. "3 كرتون خيار")
+  // 2. Extract leading numeric digit
   const digitMatch = text.match(/^(\d+)\s+/);
   if (digitMatch && detectedQuantity === 1) {
     detectedQuantity = parseInt(digitMatch[1], 10);
     text = text.slice(digitMatch[0].length).trim();
   }
 
-  // 3. Detect dual unit forms (كيلوين → qty 2 + كيلو)
-  for (const [dual, singular] of Object.entries(UNIT_MAP)) {
-    if (text.startsWith(dual + " ")) {
+  // 3. Detect dual unit forms (auto-generated)
+  for (const [dual, singular] of Object.entries(unitMap)) {
+    if (text.startsWith(dual + " ") || text === dual) {
       detectedUnit = singular;
       if (detectedQuantity === 1) detectedQuantity = 2;
-      text = text.slice(dual.length + 1).trim();
+      text = text.startsWith(dual + " ") ? text.slice(dual.length + 1).trim() : "";
       break;
     }
     if (text.endsWith(" " + dual)) {
@@ -69,12 +76,12 @@ function parseVoiceQuery(raw: string): { productQuery: string; detectedUnit: str
     }
   }
 
-  // 4. Detect singular unit if not yet found
+  // 4. Detect singular unit
   if (!detectedUnit) {
-    for (const unit of KNOWN_UNITS) {
-      if (text.startsWith(unit + " ")) {
+    for (const unit of knownUnits) {
+      if (text.startsWith(unit + " ") || text === unit) {
         detectedUnit = unit;
-        text = text.slice(unit.length + 1).trim();
+        text = text.startsWith(unit + " ") ? text.slice(unit.length + 1).trim() : "";
         break;
       }
       if (text.endsWith(" " + unit)) {
@@ -93,11 +100,15 @@ function splitIntoItems(raw: string): string[] {
   const normalized = raw
     .replace(/\s+وكمان\s*/g, "|")
     .replace(/\s+وأيضا?\s*/g, "|")
-    .replace(/\s+و\s+/g, "|")           // "و" with spaces on both sides
-    .replace(/\s+و(?=[ا-ي\d])/g, "|")  // "و" directly attached to next Arabic word
+    .replace(/\s+و\s+/g, "|")
+    .replace(/\s+و(?=[ا-ي\d])/g, "|")
     .replace(/[،,]\s*/g, "|");
   return normalized.split("|").map(s => s.trim()).filter(Boolean);
 }
+
+
+// Base fallback units in case DB fetch fails
+const BASE_UNITS = ["كرتون", "كيلو", "حبة", "حزمة", "علبة", "كيس", "لتر", "باكيت", "صندوق", "ربطة", "طبق", "قطعة"];
 
 const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   const { tenantId, user } = useAuth();
@@ -105,7 +116,28 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [addedItems, setAddedItems] = useState<string[]>([]);
+  const [knownUnits, setKnownUnits] = useState<string[]>(BASE_UNITS);
   const recognitionRef = useRef<any>(null);
+
+  // Load all unit_options from categories dynamically
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase
+      .from("categories")
+      .select("unit_options")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .then(({ data }) => {
+        if (!data) return;
+        const allUnits = new Set<string>(BASE_UNITS);
+        for (const cat of data) {
+          for (const u of (cat.unit_options || [])) {
+            if (u) allUnits.add(u.trim());
+          }
+        }
+        setKnownUnits([...allUnits]);
+      });
+  }, [tenantId]);
 
   // Keep a ref to the latest handler to avoid stale closure in SpeechRecognition callbacks
   const handleVoiceResultRef = useRef<(query: string) => Promise<void>>();
@@ -117,7 +149,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
       const segments = splitIntoItems(fullQuery);
 
       for (const segment of segments) {
-        const { productQuery, detectedUnit, detectedQuantity } = parseVoiceQuery(segment);
+        const { productQuery, detectedUnit, detectedQuantity } = parseVoiceQuery(segment, knownUnits);
         if (!productQuery) continue;
 
         const { data } = await supabase
@@ -174,12 +206,12 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
       } else {
         const seg = segments[0];
         if (seg) {
-          const { productQuery } = parseVoiceQuery(seg);
+          const { productQuery } = parseVoiceQuery(seg, knownUnits);
           toast.success(`تمت إضافة ${productQuery} للسلة`);
         }
       }
     };
-  }, [tenantId, user, addItem, updateQuantity]);
+  }, [tenantId, user, addItem, updateQuantity, knownUnits]);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
