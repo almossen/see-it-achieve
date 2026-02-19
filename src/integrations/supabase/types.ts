@@ -150,6 +150,7 @@ export type Database = {
           substitute_approved: boolean | null
           substitute_image_url: string | null
           substitute_name: string | null
+          unit: string | null
         }
         Insert: {
           created_at?: string
@@ -163,6 +164,7 @@ export type Database = {
           substitute_approved?: boolean | null
           substitute_image_url?: string | null
           substitute_name?: string | null
+          unit?: string | null
         }
         Update: {
           created_at?: string
@@ -176,6 +178,7 @@ export type Database = {
           substitute_approved?: boolean | null
           substitute_image_url?: string | null
           substitute_name?: string | null
+          unit?: string | null
         }
         Relationships: [
           {

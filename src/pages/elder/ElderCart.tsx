@@ -92,6 +92,7 @@ const ElderCart = () => {
       product_name: item.name,
       quantity: item.quantity,
       price: item.price,
+      unit: item.unit || null,
     }));
 
     await supabase.from("order_items").insert(orderItems);
@@ -100,7 +101,7 @@ const ElderCart = () => {
     if (selectedDriver) {
       const driver = drivers.find((d) => d.id === selectedDriver);
       if (driver?.whatsapp_number) {
-        const itemsList = items.map((i) => `• ${i.name} × ${i.quantity}`).join("\n");
+        const itemsList = items.map((i) => `• ${i.name} × ${i.quantity} ${i.unit || ""}`).join("\n");
         const msg = `🛒 طلب جديد!\n\n${itemsList}\n\n💰 المجموع: ${total} ر.س\n📝 ملاحظات: ${notes || "لا يوجد"}`;
         window.open(`https://wa.me/${driver.whatsapp_number}?text=${encodeURIComponent(msg)}`, "_blank");
       }
@@ -159,7 +160,7 @@ const ElderCart = () => {
             >
               <span className="text-3xl flex-shrink-0">{item.emoji || "📦"}</span>
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm truncate">{item.name}</p>
+                <p className="font-bold text-sm truncate">{item.name} <span className="text-muted-foreground font-normal">({item.unit || "حبة"})</span></p>
                 {item.price && (
                   <p className="text-xs text-primary font-medium">{(item.price * item.quantity).toFixed(2)} ر.س</p>
                 )}
