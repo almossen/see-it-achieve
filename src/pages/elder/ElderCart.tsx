@@ -21,12 +21,33 @@ const ElderCart = () => {
 
   useEffect(() => {
     if (!tenantId) return;
-    supabase
-      .from("drivers")
-      .select("id, profiles!drivers_user_id_fkey(full_name), whatsapp_number")
-      .eq("tenant_id", tenantId)
-      .eq("is_available", true)
-      .then(({ data }) => setDrivers(data || []));
+    const fetchDrivers = async () => {
+      const [{ data: driversData }, { data: tenantData }] = await Promise.all([
+        supabase
+          .from("drivers")
+          .select("id, profiles!drivers_user_id_fkey(full_name), whatsapp_number")
+          .eq("tenant_id", tenantId)
+          .eq("is_available", true),
+        supabase
+          .from("tenants")
+          .select("default_driver_id")
+          .eq("id", tenantId)
+          .single(),
+      ]);
+      const availableDrivers = driversData || [];
+      setDrivers(availableDrivers);
+
+      // Auto-assign: if 1 driver, select it. If multiple, use default from settings.
+      if (availableDrivers.length === 1) {
+        setSelectedDriver(availableDrivers[0].id);
+      } else if (availableDrivers.length > 1 && (tenantData as any)?.default_driver_id) {
+        const defaultId = (tenantData as any).default_driver_id;
+        if (availableDrivers.some((d: any) => d.id === defaultId)) {
+          setSelectedDriver(defaultId);
+        }
+      }
+    };
+    fetchDrivers();
   }, [tenantId]);
 
   const handleSubmit = async () => {
