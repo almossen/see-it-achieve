@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { UserPlus, Phone } from "lucide-react";
+import { UserPlus, Phone, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDeleteUser } from "@/hooks/useDeleteUser";
 
 const DriversPage = () => {
   const { tenantId } = useAuth();
@@ -18,6 +20,7 @@ const DriversPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ email: "", fullName: "", phone: "", whatsapp: "", password: "" });
   const [submitting, setSubmitting] = useState(false);
+  const { deleting, deleteUser } = useDeleteUser(() => fetchDrivers());
 
   const fetchDrivers = async () => {
     if (!tenantId) return;
@@ -177,6 +180,31 @@ const DriversPage = () => {
               )}>
                 {driver.is_available ? "متاح ✅" : "غير متاح ❌"}
               </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full text-destructive border-destructive/30 hover:bg-destructive/10 gap-2" disabled={deleting === driver.user_id}>
+                    <Trash2 className="h-4 w-4" />
+                    {deleting === driver.user_id ? "جاري الحذف..." : "حذف السائق"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>حذف {driver.profiles?.full_name || "السائق"}؟</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      سيتم حذف هذا السائق نهائياً من النظام. لا يمكن التراجع عن هذا الإجراء.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => deleteUser(driver.user_id, driver.profiles?.full_name || "السائق")}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      حذف
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </CardContent>
           </Card>
         ))}
