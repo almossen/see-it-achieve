@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { UserPlus, Phone, Trash2 } from "lucide-react";
+import { UserPlus, Phone, Trash2, Pencil, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDeleteUser } from "@/hooks/useDeleteUser";
 
@@ -28,6 +28,18 @@ const MembersPage = () => {
   const [newMember, setNewMember] = useState({ email: "", fullName: "", phone: "", role: "member", password: "" });
   const [submitting, setSubmitting] = useState(false);
   const { deleting, deleteUser } = useDeleteUser(() => fetchMembers());
+
+  // Edit state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editMember, setEditMember] = useState<any>(null);
+  const [editData, setEditData] = useState({ fullName: "", phone: "", role: "" });
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // Password reset state
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [passwordMember, setPasswordMember] = useState<any>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
 
   const fetchMembers = async () => {
     if (!tenantId) return;
@@ -60,6 +72,28 @@ const MembersPage = () => {
     fetchMembers();
   }, [tenantId]);
 
+  const getToken = async () => {
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token;
+  };
+
+  const callUpdateMember = async (body: Record<string, any>) => {
+    const token = await getToken();
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-member`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    return { res, result: await res.json() };
+  };
+
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newMember.password.length < 6) {
@@ -68,9 +102,7 @@ const MembersPage = () => {
     }
     setSubmitting(true);
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData?.session?.access_token;
-
+    const token = await getToken();
     const res = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-member`,
       {
@@ -101,6 +133,71 @@ const MembersPage = () => {
       setNewMember({ email: "", fullName: "", phone: "", role: "member", password: "" });
       fetchMembers();
     }
+  };
+
+  const openEditDialog = (member: any) => {
+    const role = member.user_roles?.[0]?.role || "member";
+    setEditMember(member);
+    setEditData({ fullName: member.full_name, phone: member.phone || "", role });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editMember) return;
+    setEditSubmitting(true);
+
+    const { res, result } = await callUpdateMember({
+      action: "update_profile",
+      userId: editMember.user_id,
+      fullName: editData.fullName,
+      phone: editData.phone,
+      role: editData.role,
+    });
+
+    setEditSubmitting(false);
+    if (!res.ok) {
+      toast.error("خطأ في تعديل البيانات", { description: result.error });
+    } else {
+      toast.success("تم تعديل البيانات بنجاح");
+      setEditDialogOpen(false);
+      fetchMembers();
+    }
+  };
+
+  const openPasswordDialog = (member: any) => {
+    setPasswordMember(member);
+    setNewPassword("");
+    setPasswordDialogOpen(true);
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordMember) return;
+    if (newPassword.length < 6) {
+      toast.error("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+      return;
+    }
+    setPasswordSubmitting(true);
+
+    const { res, result } = await callUpdateMember({
+      action: "reset_password",
+      userId: passwordMember.user_id,
+      newPassword,
+    });
+
+    setPasswordSubmitting(false);
+    if (!res.ok) {
+      toast.error("خطأ في تغيير كلمة المرور", { description: result.error });
+    } else {
+      toast.success(`تم تغيير كلمة المرور لـ ${passwordMember.full_name}`);
+      setPasswordDialogOpen(false);
+    }
+  };
+
+  const canResetPassword = (member: any) => {
+    const roles = member.user_roles?.map((r: any) => r.role) || [];
+    return roles.includes("elder") || roles.includes("driver");
   };
 
   if (loading) {
@@ -201,7 +298,7 @@ const MembersPage = () => {
       <div className="space-y-3">
         {members.map((member) => (
           <Card key={member.id}>
-            <CardContent className="p-4 flex items-center gap-4">
+            <CardContent className="p-4 flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg flex-shrink-0">
                 {member.full_name?.charAt(0) || "?"}
               </div>
@@ -214,7 +311,7 @@ const MembersPage = () => {
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 flex-shrink-0">
                 {member.user_roles?.map((r: any) => (
                   <span
                     key={r.role}
@@ -231,30 +328,40 @@ const MembersPage = () => {
                 ))}
               </div>
               {member.user_id !== currentUser?.id && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-destructive flex-shrink-0" disabled={deleting === member.user_id}>
-                      <Trash2 className="h-4 w-4" />
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button variant="ghost" size="icon" onClick={() => openEditDialog(member)} title="تعديل">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  {canResetPassword(member) && (
+                    <Button variant="ghost" size="icon" onClick={() => openPasswordDialog(member)} title="تغيير كلمة المرور">
+                      <KeyRound className="h-4 w-4" />
                     </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>حذف {member.full_name}؟</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        سيتم حذف هذا العضو نهائياً من النظام. لا يمكن التراجع عن هذا الإجراء.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => deleteUser(member.user_id, member.full_name)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
-                        حذف
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                  )}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="icon" className="text-destructive" disabled={deleting === member.user_id}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>حذف {member.full_name}؟</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          سيتم حذف هذا العضو نهائياً من النظام. لا يمكن التراجع عن هذا الإجراء.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => deleteUser(member.user_id, member.full_name)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          حذف
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -263,6 +370,77 @@ const MembersPage = () => {
           <p className="text-center text-muted-foreground py-12">لا يوجد أعضاء بعد</p>
         )}
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>تعديل بيانات {editMember?.full_name}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditMember} className="space-y-4">
+            <div className="space-y-2">
+              <Label>الاسم الكامل</Label>
+              <Input
+                value={editData.fullName}
+                onChange={(e) => setEditData({ ...editData, fullName: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>رقم الجوال</Label>
+              <Input
+                value={editData.phone}
+                onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
+                dir="ltr"
+                placeholder="05XXXXXXXX"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>الدور</Label>
+              <Select value={editData.role} onValueChange={(v) => setEditData({ ...editData, role: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">عضو</SelectItem>
+                  <SelectItem value="elder">كبير السن</SelectItem>
+                  <SelectItem value="driver">سائق</SelectItem>
+                  <SelectItem value="admin">مدير</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" className="w-full" disabled={editSubmitting}>
+              {editSubmitting ? "جاري الحفظ..." : "حفظ التعديلات"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Password Reset Dialog */}
+      <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>تغيير كلمة المرور لـ {passwordMember?.full_name}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleResetPassword} className="space-y-4">
+            <div className="space-y-2">
+              <Label>كلمة المرور الجديدة</Label>
+              <Input
+                type="text"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                dir="ltr"
+                minLength={6}
+                placeholder="6 أحرف على الأقل"
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={passwordSubmitting}>
+              {passwordSubmitting ? "جاري التغيير..." : "تغيير كلمة المرور"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
