@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { UserPlus, Phone } from "lucide-react";
+import { UserPlus, Phone, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDeleteUser } from "@/hooks/useDeleteUser";
 
 const roleLabels: Record<string, string> = {
   admin: "مدير",
@@ -19,12 +21,13 @@ const roleLabels: Record<string, string> = {
 };
 
 const MembersPage = () => {
-  const { tenantId } = useAuth();
+  const { tenantId, user: currentUser } = useAuth();
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newMember, setNewMember] = useState({ email: "", fullName: "", phone: "", role: "member", password: "" });
   const [submitting, setSubmitting] = useState(false);
+  const { deleting, deleteUser } = useDeleteUser(() => fetchMembers());
 
   const fetchMembers = async () => {
     if (!tenantId) return;
@@ -224,6 +227,32 @@ const MembersPage = () => {
                   </span>
                 ))}
               </div>
+              {member.user_id !== currentUser?.id && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="text-destructive flex-shrink-0" disabled={deleting === member.user_id}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>حذف {member.full_name}؟</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        سيتم حذف هذا العضو نهائياً من النظام. لا يمكن التراجع عن هذا الإجراء.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => deleteUser(member.user_id, member.full_name)}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        حذف
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </CardContent>
           </Card>
         ))}
