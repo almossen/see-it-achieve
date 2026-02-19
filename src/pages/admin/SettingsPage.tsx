@@ -5,34 +5,46 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
 const SettingsPage = () => {
   const { tenantId, profile, user, signOut } = useAuth();
   const [tenant, setTenant] = useState<any>(null);
+  const [drivers, setDrivers] = useState<any[]>([]);
   const [profileForm, setProfileForm] = useState({ full_name: "", phone: "" });
-  const [tenantForm, setTenantForm] = useState({ name: "", phone: "", whatsapp_number: "" });
+  const [tenantForm, setTenantForm] = useState({ name: "", phone: "", whatsapp_number: "", default_driver_id: "" });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!tenantId) return;
-    const fetchTenant = async () => {
-      const { data } = await supabase.from("tenants").select("*").eq("id", tenantId).single();
-      if (data) {
-        setTenant(data);
-        setTenantForm({ name: data.name, phone: data.phone || "", whatsapp_number: data.whatsapp_number || "" });
+    const fetchData = async () => {
+      const [{ data: tenantData }, { data: driversData }] = await Promise.all([
+        supabase.from("tenants").select("*").eq("id", tenantId).single(),
+        supabase.from("drivers").select("id, user_id, profiles!drivers_user_id_fkey(full_name)").eq("tenant_id", tenantId),
+      ]);
+      if (tenantData) {
+        setTenant(tenantData);
+        setTenantForm({ name: tenantData.name, phone: tenantData.phone || "", whatsapp_number: tenantData.whatsapp_number || "", default_driver_id: (tenantData as any).default_driver_id || "" });
       }
+      setDrivers(driversData || []);
       if (profile) {
         setProfileForm({ full_name: profile.full_name, phone: profile.phone || "" });
       }
       setLoading(false);
     };
-    fetchTenant();
+    fetchData();
   }, [tenantId, profile]);
 
   const saveTenant = async () => {
-    const { error } = await supabase.from("tenants").update(tenantForm).eq("id", tenantId);
+    const updateData: any = { name: tenantForm.name, phone: tenantForm.phone, whatsapp_number: tenantForm.whatsapp_number };
+    if (tenantForm.default_driver_id) {
+      updateData.default_driver_id = tenantForm.default_driver_id;
+    } else {
+      updateData.default_driver_id = null;
+    }
+    const { error } = await supabase.from("tenants").update(updateData).eq("id", tenantId);
     if (error) toast.error("خطأ", { description: error.message });
     else toast.success("تم حفظ إعدادات العائلة");
   };
@@ -80,6 +92,23 @@ const SettingsPage = () => {
                 <Label>رقم واتساب السائق الافتراضي</Label>
                 <Input value={tenantForm.whatsapp_number} onChange={(e) => setTenantForm({ ...tenantForm, whatsapp_number: e.target.value })} dir="ltr" placeholder="966XXXXXXXXX" />
               </div>
+              {drivers.length > 0 && (
+                <div className="space-y-2">
+                  <Label>السائق الافتراضي</Label>
+                  <Select value={tenantForm.default_driver_id} onValueChange={(v) => setTenantForm({ ...tenantForm, default_driver_id: v })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر السائق الافتراضي" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {drivers.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.profiles?.full_name || "سائق"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <Button onClick={saveTenant}>حفظ</Button>
             </CardContent>
           </Card>

@@ -426,6 +426,7 @@ export type Database = {
       tenants: {
         Row: {
           created_at: string
+          default_driver_id: string | null
           id: string
           logo_url: string | null
           name: string
@@ -436,6 +437,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_driver_id?: string | null
           id?: string
           logo_url?: string | null
           name: string
@@ -446,6 +448,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_driver_id?: string | null
           id?: string
           logo_url?: string | null
           name?: string
@@ -454,7 +457,15 @@ export type Database = {
           updated_at?: string
           whatsapp_number?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tenants_default_driver_id_fkey"
+            columns: ["default_driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {

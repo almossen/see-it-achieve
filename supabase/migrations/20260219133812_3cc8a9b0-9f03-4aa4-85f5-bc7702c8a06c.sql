@@ -1,0 +1,1 @@
+ALTER TABLE public.tenants ADD COLUMN default_driver_id uuid REFERENCES public.drivers(id) ON DELETE SET NULL;
