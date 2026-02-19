@@ -16,7 +16,7 @@ const DriversPage = () => {
   const [drivers, setDrivers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({ email: "", fullName: "", phone: "", whatsapp: "" });
+  const [form, setForm] = useState({ email: "", fullName: "", phone: "", whatsapp: "", password: "" });
   const [submitting, setSubmitting] = useState(false);
 
   const fetchDrivers = async () => {
@@ -38,7 +38,7 @@ const DriversPage = () => {
     // Create user with driver role
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: form.email,
-      password: Math.random().toString(36).slice(-8) + "A1!",
+      password: form.password,
       options: {
         data: {
           full_name: form.fullName,
@@ -67,7 +67,7 @@ const DriversPage = () => {
     setSubmitting(false);
     toast.success("تم إضافة السائق بنجاح");
     setDialogOpen(false);
-    setForm({ email: "", fullName: "", phone: "", whatsapp: "" });
+    setForm({ email: "", fullName: "", phone: "", whatsapp: "", password: "" });
     fetchDrivers();
   };
 
@@ -105,6 +105,10 @@ const DriversPage = () => {
               <div className="space-y-2">
                 <Label>البريد الإلكتروني</Label>
                 <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required dir="ltr" />
+              </div>
+              <div className="space-y-2">
+                <Label>كلمة المرور</Label>
+                <Input type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required dir="ltr" minLength={6} placeholder="6 أحرف على الأقل" />
               </div>
               <div className="space-y-2">
                 <Label>رقم الجوال</Label>
