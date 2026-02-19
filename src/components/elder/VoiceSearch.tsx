@@ -110,6 +110,16 @@ function splitIntoItems(raw: string): string[] {
 // Base fallback units in case DB fetch fails
 const BASE_UNITS = ["كرتون", "كيلو", "حبة", "حزمة", "علبة", "كيس", "لتر", "باكيت", "صندوق", "ربطة", "طبق", "قطعة"];
 
+// Normalize Arabic text: unify hamza/alef variants for better matching
+function normalizeArabic(text: string): string {
+  return text
+    .replace(/[أإآٱ]/g, "ا")  // normalize all alef forms
+    .replace(/ة/g, "ه")        // normalize taa marbuta
+    .replace(/ى/g, "ي")        // normalize alef maqsura
+    .replace(/ئ|ؤ/g, "ء")     // normalize hamza forms
+    .trim();
+}
+
 const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   const { tenantId, user } = useAuth();
   const { addItem, updateQuantity } = useCart();
@@ -152,16 +162,24 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
         const { productQuery, detectedUnit, detectedQuantity } = parseVoiceQuery(segment, knownUnits);
         if (!productQuery) continue;
 
+        const normalizedQuery = normalizeArabic(productQuery);
+
         const { data } = await supabase
           .from("products")
           .select("*")
           .eq("tenant_id", tenantId)
           .eq("is_active", true)
-          .or(`name_ar.ilike.%${productQuery}%,name_en.ilike.%${productQuery}%`)
+          .or(`name_ar.ilike.%${productQuery}%,name_en.ilike.%${productQuery}%,name_ar.ilike.%${normalizedQuery}%`)
           .limit(5);
 
-        if (data && data.length > 0) {
-          const product = data[0];
+        // Client-side fallback: normalize stored names for comparison
+        const matched = data?.find(p => {
+          const storedNorm = normalizeArabic(p.name_ar);
+          return storedNorm.includes(normalizedQuery) || normalizedQuery.includes(storedNorm);
+        }) ?? data?.[0];
+
+        if (matched) {
+          const product = matched;
           const unitLabel = detectedUnit || product.unit || "";
           addItem({
             product_id: product.id,
