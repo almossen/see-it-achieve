@@ -288,12 +288,8 @@ const ElderCart = () => {
         )}
       </Button>
 
-      {/* Total + Submit */}
-      <div className="bg-muted rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between text-lg font-bold">
-          <span>المجموع</span>
-          <span className="text-primary">{total.toFixed(2)} ر.س</span>
-        </div>
+      {/* Submit */}
+      <div className="bg-muted rounded-xl p-4">
         <Button
           onClick={handleSubmit}
           disabled={submitting}
