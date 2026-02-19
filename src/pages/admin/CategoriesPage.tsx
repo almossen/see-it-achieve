@@ -9,6 +9,19 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, GripVertical, Pencil, Trash2, Camera, ImagePlus, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const ALL_UNIT_OPTIONS = [
+  { value: "حبة", emoji: "1️⃣" },
+  { value: "كرتون", emoji: "📦" },
+  { value: "صحن", emoji: "🍽️" },
+  { value: "كيلو", emoji: "⚖️" },
+  { value: "كيس", emoji: "🛍️" },
+  { value: "حزمة", emoji: "🌿" },
+  { value: "درزن", emoji: "🥚" },
+  { value: "علبة", emoji: "🥫" },
+  { value: "ربطة", emoji: "🧻" },
+];
 
 const defaultCategories = [
   { name_ar: "خضروات", name_en: "Vegetables", emoji: "🥬" },
@@ -28,6 +41,7 @@ const CategoriesPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name_ar: "", name_en: "", emoji: "🛒" });
+  const [selectedUnits, setSelectedUnits] = useState<string[]>(["حبة", "كرتون", "كيلو"]);
   const [submitting, setSubmitting] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -103,7 +117,7 @@ const CategoriesPage = () => {
       if (uploaded) image_url = uploaded;
     }
 
-    const payload = { ...form, image_url };
+    const payload = { ...form, image_url, unit_options: selectedUnits };
 
     if (editingId) {
       const { error } = await supabase.from("categories").update(payload).eq("id", editingId);
@@ -128,6 +142,7 @@ const CategoriesPage = () => {
   const resetForm = () => {
     setEditingId(null);
     setForm({ name_ar: "", name_en: "", emoji: "🛒" });
+    setSelectedUnits(["حبة", "كرتون", "كيلو"]);
     setImageFile(null);
     setImagePreview(null);
     setExistingImageUrl(null);
@@ -150,6 +165,7 @@ const CategoriesPage = () => {
   const openEdit = (cat: any) => {
     setEditingId(cat.id);
     setForm({ name_ar: cat.name_ar, name_en: cat.name_en || "", emoji: cat.emoji || "🛒" });
+    setSelectedUnits(cat.unit_options || ["حبة", "كرتون", "كيلو"]);
     setExistingImageUrl(cat.image_url || null);
     setImagePreview(cat.image_url || null);
     setImageFile(null);
@@ -225,7 +241,41 @@ const CategoriesPage = () => {
                   <Label>الاسم بالإنجليزية (اختياري)</Label>
                   <Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} dir="ltr" />
                 </div>
-                <Button type="submit" className="w-full" disabled={submitting}>
+                {/* Unit options picker */}
+                <div className="space-y-2">
+                  <Label>الوحدات المتاحة</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_UNIT_OPTIONS.map((u) => {
+                      const isSelected = selectedUnits.includes(u.value);
+                      return (
+                        <button
+                          key={u.value}
+                          type="button"
+                          onClick={() => {
+                            setSelectedUnits((prev) =>
+                              isSelected
+                                ? prev.filter((v) => v !== u.value)
+                                : [...prev, u.value]
+                            );
+                          }}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 text-sm font-medium transition-all",
+                            isSelected
+                              ? "bg-primary/10 border-primary text-primary"
+                              : "bg-muted/50 border-transparent text-muted-foreground hover:border-border"
+                          )}
+                        >
+                          <span>{u.emoji}</span>
+                          <span>{u.value}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedUnits.length === 0 && (
+                    <p className="text-xs text-destructive">اختر وحدة واحدة على الأقل</p>
+                  )}
+                </div>
+                <Button type="submit" className="w-full" disabled={submitting || selectedUnits.length === 0}>
                   {submitting ? "جاري الحفظ..." : editingId ? "حفظ التعديلات" : "إضافة الفئة"}
                 </Button>
               </form>
@@ -247,6 +297,11 @@ const CategoriesPage = () => {
               <div className="flex-1 min-w-0">
                 <p className="font-medium">{cat.name_ar}</p>
                 {cat.name_en && <p className="text-xs text-muted-foreground">{cat.name_en}</p>}
+                {cat.unit_options && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {cat.unit_options.join(" · ")}
+                  </p>
+                )}
               </div>
               <Switch checked={cat.is_active} onCheckedChange={() => toggleActive(cat.id, cat.is_active)} />
               <Button variant="ghost" size="icon" onClick={() => openEdit(cat)}>
