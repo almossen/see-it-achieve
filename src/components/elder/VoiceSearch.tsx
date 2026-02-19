@@ -163,20 +163,39 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
         if (!productQuery) continue;
 
         const normalizedQuery = normalizeArabic(productQuery);
+        // Split into individual words for broader DB search
+        const words = normalizedQuery.split(/\s+/).filter(w => w.length >= 2);
+
+        // Build OR: full phrase + each individual word (covers hamza/alef differences)
+        const orParts = [
+          `name_ar.ilike.%${productQuery}%`,
+          `name_en.ilike.%${productQuery}%`,
+          ...words.map(w => `name_ar.ilike.%${w}%`),
+          ...words.map(w => `name_en.ilike.%${w}%`),
+        ];
 
         const { data } = await supabase
           .from("products")
           .select("*")
           .eq("tenant_id", tenantId)
           .eq("is_active", true)
-          .or(`name_ar.ilike.%${productQuery}%,name_en.ilike.%${productQuery}%,name_ar.ilike.%${normalizedQuery}%`)
-          .limit(5);
+          .or(orParts.join(","))
+          .limit(10);
 
-        // Client-side fallback: normalize stored names for comparison
-        const matched = data?.find(p => {
-          const storedNorm = normalizeArabic(p.name_ar);
-          return storedNorm.includes(normalizedQuery) || normalizedQuery.includes(storedNorm);
-        }) ?? data?.[0];
+        // Client-side: rank by best normalized match
+        const rankMatch = (p: { name_ar: string; name_en: string | null }) => {
+          const stored = normalizeArabic(p.name_ar);
+          if (stored === normalizedQuery) return 4;
+          if (stored.includes(normalizedQuery) || normalizedQuery.includes(stored)) return 3;
+          if (words.every(w => stored.includes(w))) return 2;
+          if (words.some(w => stored.includes(w))) return 1;
+          return 0;
+        };
+
+        const matched = data
+          ?.map(p => ({ p, rank: rankMatch(p) }))
+          .filter(x => x.rank > 0)
+          .sort((a, b) => b.rank - a.rank)[0]?.p;
 
         if (matched) {
           const product = matched;
