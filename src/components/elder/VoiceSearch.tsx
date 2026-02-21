@@ -110,25 +110,17 @@ function normalizeArabic(text: string): string {
     .trim();
 }
 
-// ─── Google Custom Search ────────────────────────────────────────
-const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_SEARCH_API_KEY || "";
-const GOOGLE_CX = import.meta.env.VITE_GOOGLE_SEARCH_CX || "";
-
+// ─── Google Custom Search (via Edge Function) ───────────────────
 async function fetchGoogleImages(query: string): Promise<string[]> {
-  if (!GOOGLE_API_KEY || !GOOGLE_CX) {
-    // fallback لو ما في مفاتيح
-    return [
-      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},food`,
-      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},grocery`,
-      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},product`,
-      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},market`,
-    ];
-  }
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&searchType=image&num=4&imgSize=medium&safe=active`;
-    const res = await fetch(url);
-    const data = await res.json();
-    return (data.items || []).map((item: any) => item.link).filter(Boolean);
+    const { data, error } = await supabase.functions.invoke("search-images", {
+      body: { query },
+    });
+    if (error) {
+      console.error("Search images error:", error);
+      return [];
+    }
+    return data?.images || [];
   } catch {
     return [];
   }
