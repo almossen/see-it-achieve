@@ -29,8 +29,13 @@ serve(async (req) => {
     }
 
     const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&searchType=image&num=4&imgSize=medium&safe=active`;
+    console.log("Fetching Google Images for:", query);
     const res = await fetch(url);
     const data = await res.json();
+    console.log("Google API response status:", res.status, "items:", data.items?.length || 0);
+    if (data.error) {
+      console.error("Google API error:", JSON.stringify(data.error));
+    }
     const images = (data.items || []).map((item: any) => item.link).filter(Boolean);
 
     return new Response(JSON.stringify({ images }), {
