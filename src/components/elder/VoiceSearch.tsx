@@ -110,27 +110,24 @@ function normalizeArabic(text: string): string {
     .trim();
 }
 
-// ─── Unsplash ───────────────────────────────────────────────────
-// ضع مفتاح Unsplash هنا أو في متغيرات البيئة
-const UNSPLASH_ACCESS_KEY = import.meta.env.VITE_UNSPLASH_ACCESS_KEY || "";
-
+// ─── Unsplash via Edge Function ─────────────────────────────────
 async function fetchUnsplashImages(query: string): Promise<string[]> {
-  if (!UNSPLASH_ACCESS_KEY) {
-    // fallback: صور placeholder لو ما في مفتاح
-    return [
-      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},food,1`,
-      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},food,2`,
-      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},grocery,3`,
-      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},market,4`,
-    ];
-  }
   try {
+    const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch(
-      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=4&orientation=squarish`,
-      { headers: { Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}` } }
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/search-images`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ query }),
+      }
     );
     const data = await res.json();
-    return (data.results || []).map((r: any) => r.urls?.small || r.urls?.regular);
+    return data.images || [];
   } catch {
     return [];
   }
