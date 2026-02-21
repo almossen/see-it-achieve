@@ -110,24 +110,25 @@ function normalizeArabic(text: string): string {
     .trim();
 }
 
-// ─── Unsplash via Edge Function ─────────────────────────────────
-async function fetchUnsplashImages(query: string): Promise<string[]> {
+// ─── Google Custom Search ────────────────────────────────────────
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_SEARCH_API_KEY || "";
+const GOOGLE_CX = import.meta.env.VITE_GOOGLE_SEARCH_CX || "";
+
+async function fetchGoogleImages(query: string): Promise<string[]> {
+  if (!GOOGLE_API_KEY || !GOOGLE_CX) {
+    // fallback لو ما في مفاتيح
+    return [
+      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},food`,
+      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},grocery`,
+      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},product`,
+      `https://source.unsplash.com/200x200/?${encodeURIComponent(query)},market`,
+    ];
+  }
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/search-images`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        },
-        body: JSON.stringify({ query }),
-      }
-    );
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&searchType=image&num=4&imgSize=medium&safe=active`;
+    const res = await fetch(url);
     const data = await res.json();
-    return data.images || [];
+    return (data.items || []).map((item: any) => item.link).filter(Boolean);
   } catch {
     return [];
   }
@@ -254,10 +255,9 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
         .filter(x => x.rank > 0)
         .sort((a, b) => b.rank - a.rank)[0]?.p || null;
 
-      // جلب الصور من Unsplash — نستخدم الاسم الإنجليزي إن وُجد
+      // جلب الصور من Unsplash
       setLoadingImages(true);
-      const searchTerm = dbProduct?.name_en || resolvedQuery;
-      const images = await fetchUnsplashImages(searchTerm + " food");
+      const images = await fetchGoogleImages(resolvedQuery);
       setLoadingImages(false);
 
       setPendingProduct({
