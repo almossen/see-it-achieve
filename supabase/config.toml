@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.update-member]
 verify_jwt = false
+
+[functions.search-images]
+verify_jwt = false
