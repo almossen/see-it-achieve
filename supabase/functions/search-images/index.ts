@@ -20,6 +20,7 @@ serve(async (req) => {
 
     const apiKey = Deno.env.get("GOOGLE_SEARCH_API_KEY");
     const cx = Deno.env.get("GOOGLE_SEARCH_CX");
+    console.log("API Key starts with:", apiKey?.substring(0, 6), "CX starts with:", cx?.substring(0, 6), "CX length:", cx?.length);
 
     if (!apiKey || !cx) {
       console.error("Missing GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_CX");
