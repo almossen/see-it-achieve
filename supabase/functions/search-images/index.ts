@@ -18,26 +18,27 @@ serve(async (req) => {
       });
     }
 
-    const accessKey = Deno.env.get("VITE_UNSPLASH_ACCESS_KEY");
-    if (!accessKey) {
-      return new Response(JSON.stringify({ images: [], error: "No Unsplash key configured" }), {
+    const apiKey = Deno.env.get("GOOGLE_SEARCH_API_KEY");
+    const cx = Deno.env.get("GOOGLE_SEARCH_CX");
+
+    if (!apiKey || !cx) {
+      console.error("Missing GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_CX");
+      return new Response(JSON.stringify({ images: [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const res = await fetch(
-      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=4&orientation=squarish`,
-      { headers: { Authorization: `Client-ID ${accessKey}` } }
-    );
-
+    const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&searchType=image&num=4&imgSize=medium&safe=active`;
+    const res = await fetch(url);
     const data = await res.json();
-    const images = (data.results || []).map((r: any) => r.urls?.small || r.urls?.regular);
+    const images = (data.items || []).map((item: any) => item.link).filter(Boolean);
 
     return new Response(JSON.stringify({ images }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    return new Response(JSON.stringify({ images: [], error: error.message }), {
+    console.error("Search images error:", error);
+    return new Response(JSON.stringify({ images: [] }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
