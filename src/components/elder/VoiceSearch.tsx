@@ -254,9 +254,10 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
         .filter(x => x.rank > 0)
         .sort((a, b) => b.rank - a.rank)[0]?.p || null;
 
-      // جلب الصور من Unsplash
+      // جلب الصور من Unsplash — نستخدم الاسم الإنجليزي إن وُجد
       setLoadingImages(true);
-      const images = await fetchUnsplashImages(resolvedQuery + " food");
+      const searchTerm = dbProduct?.name_en || resolvedQuery;
+      const images = await fetchUnsplashImages(searchTerm + " food");
       setLoadingImages(false);
 
       setPendingProduct({
