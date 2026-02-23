@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -6,10 +6,9 @@ import { useCart } from "@/hooks/useCart";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Minus, Plus, Trash2, ShoppingCart, CheckCircle, Volume2, VolumeX } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingCart, CheckCircle, Volume2, VolumeX, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRef, useCallback } from "react";
 
 const ElderCart = () => {
   const { tenantId, user } = useAuth();
@@ -20,26 +19,24 @@ const ElderCart = () => {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const [loadingAudio, setLoadingAudio] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const readCartAloud = useCallback(() => {
-    if (!window.speechSynthesis) {
-      toast.error("المتصفح لا يدعم القراءة الصوتية");
-      return;
-    }
-
+  const readCartAloud = useCallback(async () => {
     // If already speaking, stop
     if (speaking) {
-      window.speechSynthesis.cancel();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       setSpeaking(false);
       return;
     }
 
-    // Build natural Arabic text to read
-    const itemLines = items.map((item, idx) => {
+    // Build natural Arabic text
+    const itemLines = items.map((item) => {
       const qty = item.quantity;
       const unit = item.unit || "حبة";
-      // Natural phrasing: "3 كيلو طماطم" instead of "طماطم، 3 كيلو"
       return `${qty} ${unit} ${item.name}`;
     });
 
@@ -47,34 +44,49 @@ const ElderCart = () => {
     if (itemLines.length === 1) {
       itemsText = itemLines[0];
     } else if (itemLines.length === 2) {
-      itemsText = `${itemLines[0]}... و ${itemLines[1]}`;
+      itemsText = `${itemLines[0]}، و ${itemLines[1]}`;
     } else {
       const last = itemLines.pop()!;
-      itemsText = itemLines.join("... ") + `... و ${last}`;
+      itemsText = itemLines.join("، ") + `، و ${last}`;
     }
 
     const totalText = total > 0 ? ` المجموع: ${total.toFixed(0)} ريال.` : "";
     const fullText = `عندك في السلة: ${itemsText}.${totalText}`;
 
-    const utterance = new SpeechSynthesisUtterance(fullText);
-    utterance.lang = "ar-SA";
-    utterance.rate = 0.8;
-    utterance.pitch = 1.05;
+    setLoadingAudio(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ text: fullText }),
+        }
+      );
 
-    // Try to pick an Arabic voice if available
-    const voices = window.speechSynthesis.getVoices();
-    const arabicVoice = voices.find(
-      (v) => v.lang.startsWith("ar") || v.name.toLowerCase().includes("arabic")
-    );
-    if (arabicVoice) utterance.voice = arabicVoice;
+      if (!response.ok) throw new Error("TTS failed");
 
-    utterance.onstart = () => setSpeaking(true);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
 
-    utteranceRef.current = utterance;
-    window.speechSynthesis.cancel(); // clear queue first
-    window.speechSynthesis.speak(utterance);
+      audio.onplay = () => setSpeaking(true);
+      audio.onended = () => { setSpeaking(false); audioRef.current = null; };
+      audio.onerror = () => { setSpeaking(false); audioRef.current = null; };
+
+      await audio.play();
+    } catch (err: unknown) {
+      console.error("ElevenLabs TTS error:", err);
+      toast.error("حدث خطأ في القراءة الصوتية");
+      setSpeaking(false);
+    } finally {
+      setLoadingAudio(false);
+    }
   }, [items, total, speaking]);
 
   useEffect(() => {
@@ -280,9 +292,15 @@ const ElderCart = () => {
       <Button
         variant="outline"
         onClick={readCartAloud}
+        disabled={loadingAudio}
         className="w-full h-12 text-base rounded-xl border-primary/40 gap-2"
       >
-        {speaking ? (
+        {loadingAudio ? (
+          <>
+            <Loader2 className="h-5 w-5 text-primary animate-spin" />
+            جاري التحميل...
+          </>
+        ) : speaking ? (
           <>
             <VolumeX className="h-5 w-5 text-primary" />
             إيقاف القراءة
