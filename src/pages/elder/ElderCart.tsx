@@ -34,9 +34,15 @@ const ElderCart = () => {
     }
 
     // Build natural Arabic text
+    // Saudi dialect unit mapping
+    const saudiUnit = (unit: string) => {
+      const map: Record<string, string> = { "حبة": "حبّه", "كيلو": "كيلو", "ربطة": "ربطه", "علبة": "علبه", "كرتون": "كرتون", "حزمة": "حزمه" };
+      return map[unit] || unit;
+    };
+
     const itemLines = items.map((item) => {
       const qty = item.quantity;
-      const unit = item.unit || "حبة";
+      const unit = saudiUnit(item.unit || "حبّه");
       return `${qty} ${unit} ${item.name}`;
     });
 
@@ -50,8 +56,8 @@ const ElderCart = () => {
       itemsText = itemLines.join("، ") + `، و ${last}`;
     }
 
-    const totalText = total > 0 ? ` يطلع المجموع: ${total.toFixed(0)} ريال.` : "";
-    const fullText = `عندك في السلة يالغالي: ${itemsText}.${totalText}`;
+    const totalText = total > 0 ? ` يطلع المجموع كله: ${total.toFixed(0)} ريال.` : "";
+    const fullText = `يا حيّاك! عندك في السلة: ${itemsText}.${totalText} الله يعطيك العافية.`;
 
     setLoadingAudio(true);
     try {
