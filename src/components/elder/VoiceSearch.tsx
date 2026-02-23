@@ -111,10 +111,10 @@ function normalizeArabic(text: string): string {
 }
 
 // ─── Google Custom Search (via Edge Function) ───────────────────
-async function fetchGoogleImages(query: string): Promise<{ images: string[]; titles: string[] }> {
+async function fetchGoogleImages(query: string, count = 6): Promise<{ images: string[]; titles: string[] }> {
   try {
     const { data, error } = await supabase.functions.invoke("search-images", {
-      body: { query, count: 6 },
+      body: { query, count },
     });
     if (error) {
       console.error("Search images error:", error);
@@ -376,6 +376,35 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
     );
   };
 
+  // جلب مزيد من الصور
+  const fetchMoreImages = async () => {
+    if (!pendingProduct) return;
+    setLoadingImages(true);
+    const currentCount = pendingProduct.images.length;
+    const { images: newImages, titles: newTitles } = await fetchGoogleImages(
+      pendingProduct.productQuery,
+      currentCount + 6
+    );
+    setLoadingImages(false);
+    // نضيف فقط الصور الجديدة التي لم تكن موجودة
+    const existingSet = new Set(pendingProduct.images);
+    const addedImages: string[] = [];
+    const addedTitles: string[] = [];
+    for (let i = 0; i < newImages.length; i++) {
+      if (!existingSet.has(newImages[i])) {
+        addedImages.push(newImages[i]);
+        addedTitles.push(newTitles[i] || "");
+      }
+    }
+    setPendingProduct(prev =>
+      prev ? {
+        ...prev,
+        images: [...prev.images, ...addedImages],
+        titles: [...prev.titles, ...addedTitles],
+      } : prev
+    );
+  };
+
   // إعداد Speech Recognition
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -517,6 +546,17 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
                     );
                   })}
                 </div>
+              )}
+
+              {/* زر مزيد من الصور */}
+              {pendingProduct.images.length > 0 && !loadingImages && (
+                <button
+                  onClick={fetchMoreImages}
+                  className="w-full py-3 rounded-2xl border-2 border-dashed border-border text-base font-bold text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-2"
+                >
+                  <RefreshCw className="h-5 w-5" />
+                  مزيد من الصور 🔍
+                </button>
               )}
 
               {/* أزرار التنقل */}
