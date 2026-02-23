@@ -250,23 +250,42 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
         .filter(x => x.rank > 0)
         .sort((a, b) => b.rank - a.rank)[0]?.p || null;
 
-      // جلب الصور من Google
-      setLoadingImages(true);
-      const { images, titles } = await fetchGoogleImages(resolvedQuery);
-      setLoadingImages(false);
+      // إذا المنتج موجود في DB وعنده صورة → لا نبحث في DuckDuckGo
+      const hasDbImage = !!(dbProduct?.image_url);
 
-      setPendingProduct({
-        productQuery,
-        detectedUnit,
-        detectedQuantity,
-        dbProduct,
-        images,
-        titles,
-        selectedImage: dbProduct?.image_url || (images[0] || null),
-        selectedTitle: titles[0] || null,
-        quantity: detectedQuantity,
-        stage: images.length > 0 ? "image" : "quantity",
-      });
+      if (hasDbImage) {
+        // المنتج عنده صورة → نذهب مباشرة لمرحلة الكمية
+        setPendingProduct({
+          productQuery,
+          detectedUnit,
+          detectedQuantity,
+          dbProduct,
+          images: [],
+          titles: [],
+          selectedImage: dbProduct.image_url,
+          selectedTitle: null,
+          quantity: detectedQuantity,
+          stage: "quantity",
+        });
+      } else {
+        // المنتج بدون صورة أو غير موجود في DB → نبحث في DuckDuckGo
+        setLoadingImages(true);
+        const { images, titles } = await fetchGoogleImages(resolvedQuery);
+        setLoadingImages(false);
+
+        setPendingProduct({
+          productQuery,
+          detectedUnit,
+          detectedQuantity,
+          dbProduct,
+          images,
+          titles,
+          selectedImage: images[0] || null,
+          selectedTitle: titles[0] || null,
+          quantity: detectedQuantity,
+          stage: images.length > 0 ? "image" : "quantity",
+        });
+      }
     };
   }, [tenantId, user, knownUnits, synonymsMap, pendingProduct]);
 
