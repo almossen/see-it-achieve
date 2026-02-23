@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
-import { Mic, MicOff, X, Plus, Minus, Check } from "lucide-react";
+import { Mic, MicOff, X, Plus, Minus, Check, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -111,18 +111,21 @@ function normalizeArabic(text: string): string {
 }
 
 // ─── Google Custom Search (via Edge Function) ───────────────────
-async function fetchGoogleImages(query: string): Promise<string[]> {
+async function fetchGoogleImages(query: string): Promise<{ images: string[]; titles: string[] }> {
   try {
     const { data, error } = await supabase.functions.invoke("search-images", {
-      body: { query },
+      body: { query, count: 6 },
     });
     if (error) {
       console.error("Search images error:", error);
-      return [];
+      return { images: [], titles: [] };
     }
-    return data?.images || [];
+    return {
+      images: data?.images || [],
+      titles: data?.titles || [],
+    };
   } catch {
-    return [];
+    return { images: [], titles: [] };
   }
 }
 
@@ -131,10 +134,14 @@ interface PendingProduct {
   productQuery: string;
   detectedUnit: string | null;
   detectedQuantity: number;
-  dbProduct: any | null; // المنتج من DB إن وُجد
+  dbProduct: any | null;
   images: string[];
+  titles: string[];
   selectedImage: string | null;
+  selectedTitle: string | null;
   quantity: number;
+  // مرحلة العرض: "image" = اختيار الصورة، "quantity" = تأكيد الكمية
+  stage: "image" | "quantity";
 }
 
 // ─── المكوّن الرئيسي ─────────────────────────────────────────────
@@ -148,7 +155,6 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   const [knownUnits, setKnownUnits] = useState<string[]>(BASE_UNITS);
   const [synonymsMap, setSynonymsMap] = useState<Record<string, string>>({});
 
-  // المنتج الحالي المنتظر تأكيد الصورة
   const [pendingProduct, setPendingProduct] = useState<PendingProduct | null>(null);
   const [loadingImages, setLoadingImages] = useState(false);
 
@@ -200,12 +206,9 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   useEffect(() => {
     handleVoiceResultRef.current = async (fullQuery: string) => {
       if (!tenantId || !fullQuery.trim()) return;
-
-      // لو فيه منتج معلّق، نتجاهل حتى يتم تأكيده
       if (pendingProduct) return;
 
       const segments = splitIntoItems(fullQuery);
-      // نأخذ أول segment فقط — الباقي بعد التأكيد
       const segment = segments[0];
       if (!segment) return;
 
@@ -247,9 +250,9 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
         .filter(x => x.rank > 0)
         .sort((a, b) => b.rank - a.rank)[0]?.p || null;
 
-      // جلب الصور من Unsplash
+      // جلب الصور من Google
       setLoadingImages(true);
-      const images = await fetchGoogleImages(resolvedQuery);
+      const { images, titles } = await fetchGoogleImages(resolvedQuery);
       setLoadingImages(false);
 
       setPendingProduct({
@@ -258,17 +261,27 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
         detectedQuantity,
         dbProduct,
         images,
-        selectedImage: dbProduct?.image_url || null,
+        titles,
+        selectedImage: dbProduct?.image_url || (images[0] || null),
+        selectedTitle: titles[0] || null,
         quantity: detectedQuantity,
+        stage: images.length > 0 ? "image" : "quantity",
       });
     };
   }, [tenantId, user, knownUnits, synonymsMap, pendingProduct]);
+
+  // الانتقال من مرحلة الصورة إلى مرحلة الكمية
+  const proceedToQuantity = () => {
+    if (!pendingProduct) return;
+    // لو ما اختار صورة، نستخدم الأولى
+    const img = pendingProduct.selectedImage || pendingProduct.images[0] || null;
+    setPendingProduct(prev => prev ? { ...prev, selectedImage: img, stage: "quantity" } : prev);
+  };
 
   // تأكيد الإضافة للسلة
   const confirmAddToCart = () => {
     if (!pendingProduct) return;
     const { productQuery, detectedUnit, dbProduct, selectedImage, quantity } = pendingProduct;
-
     const unitLabel = detectedUnit || dbProduct?.unit || "حبة";
 
     if (dbProduct) {
@@ -303,13 +316,21 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
       });
     }
 
-    toast.success(`تمت إضافة ${productQuery} للسلة`);
+    toast.success(`✅ تمت إضافة ${quantity} ${unitLabel} ${productQuery} للسلة`);
     setPendingProduct(null);
   };
 
-  // إلغاء المنتج المعلّق
-  const cancelPending = () => {
-    setPendingProduct(null);
+  const cancelPending = () => setPendingProduct(null);
+
+  // إعادة البحث عن صور جديدة
+  const refetchImages = async () => {
+    if (!pendingProduct) return;
+    setLoadingImages(true);
+    const { images, titles } = await fetchGoogleImages(pendingProduct.productQuery);
+    setLoadingImages(false);
+    setPendingProduct(prev =>
+      prev ? { ...prev, images, titles, selectedImage: images[0] || null, selectedTitle: titles[0] || null } : prev
+    );
   };
 
   // إعداد Speech Recognition
@@ -347,7 +368,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   }, []);
 
   const toggleListening = () => {
-    if (pendingProduct) return; // لا تشغّل الميكروفون لو في تأكيد معلّق
+    if (pendingProduct) return;
     if (isListening) {
       recognitionRef.current?.stop();
     } else {
@@ -375,99 +396,190 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
 
       <div className="flex-1 overflow-y-auto">
 
-        {/* ── حالة تأكيد الصورة ── */}
-        <AnimatePresence>
-          {pendingProduct && (
+        {/* ── مرحلة اختيار الصورة ── */}
+        <AnimatePresence mode="wait">
+          {pendingProduct && pendingProduct.stage === "image" && (
             <motion.div
+              key="image-stage"
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 30 }}
+              exit={{ opacity: 0, y: -30 }}
               className="p-4 space-y-4"
             >
-              <h3 className="text-lg font-bold text-center">
-                هل تقصد "{pendingProduct.productQuery}"؟
-              </h3>
+              {/* العنوان */}
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-1">سمعتك تقول</p>
+                <h3 className="text-2xl font-bold text-primary">
+                  "{pendingProduct.productQuery}"
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">اختر الصورة الصحيحة للمنتج</p>
+              </div>
 
-              {/* صور للاختيار */}
+              {/* شبكة الصور */}
               {loadingImages ? (
-                <div className="flex justify-center py-8">
-                  <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                <div className="flex flex-col items-center justify-center py-10 gap-3">
+                  <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                  <p className="text-muted-foreground text-sm">جاري البحث في Google...</p>
+                </div>
+              ) : pendingProduct.images.length === 0 ? (
+                <div className="text-center py-8 space-y-3">
+                  <p className="text-muted-foreground">لم يتم العثور على صور</p>
+                  <button
+                    onClick={refetchImages}
+                    className="flex items-center gap-2 mx-auto px-4 py-2 rounded-xl border border-border text-sm hover:bg-muted"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    إعادة البحث
+                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  {pendingProduct.images.map((img, i) => (
-                    <button
-                      key={i}
-                      onClick={() =>
-                        setPendingProduct(prev =>
-                          prev ? { ...prev, selectedImage: img } : prev
-                        )
-                      }
-                      className={`relative rounded-2xl overflow-hidden border-4 transition-all ${
-                        pendingProduct.selectedImage === img
-                          ? "border-primary scale-105 shadow-xl"
-                          : "border-transparent"
-                      }`}
-                    >
-                      <img
-                        src={img}
-                        alt={`خيار ${i + 1}`}
-                        className="w-full aspect-square object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = "https://placehold.co/200x200?text=📦";
-                        }}
-                      />
-                      {pendingProduct.selectedImage === img && (
-                        <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full p-1">
-                          <Check className="h-4 w-4" />
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                  {pendingProduct.images.map((img, i) => {
+                    const isSelected = pendingProduct.selectedImage === img;
+                    return (
+                      <button
+                        key={i}
+                        onClick={() =>
+                          setPendingProduct(prev =>
+                            prev ? { ...prev, selectedImage: img, selectedTitle: prev.titles[i] || null } : prev
+                          )
+                        }
+                        className={`relative rounded-2xl overflow-hidden border-4 transition-all ${
+                          isSelected
+                            ? "border-primary scale-[1.03] shadow-xl"
+                            : "border-transparent hover:border-primary/30"
+                        }`}
+                      >
+                        <img
+                          src={img}
+                          alt={pendingProduct.titles[i] || `خيار ${i + 1}`}
+                          className="w-full aspect-square object-cover bg-muted"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "https://placehold.co/200x200?text=📦";
+                          }}
+                        />
+                        {/* شارة الاختيار */}
+                        {isSelected && (
+                          <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full p-1 shadow-md">
+                            <Check className="h-4 w-4" />
+                          </div>
+                        )}
+                        {/* اسم البراند من Google */}
+                        {pendingProduct.titles[i] && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-2 py-1 truncate text-right">
+                            {pendingProduct.titles[i]}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
-              {/* الكمية */}
-              <div className="flex items-center justify-center gap-6 py-2">
-                <button
-                  onClick={() =>
-                    setPendingProduct(prev =>
-                      prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : prev
-                    )
-                  }
-                  className="w-14 h-14 rounded-full bg-muted flex items-center justify-center text-2xl font-bold hover:bg-muted/80"
-                >
-                  <Minus className="h-6 w-6" />
-                </button>
-                <div className="text-center">
-                  <span className="text-4xl font-bold">{pendingProduct.quantity}</span>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {pendingProduct.detectedUnit || pendingProduct.dbProduct?.unit || "حبة"}
-                  </p>
-                </div>
-                <button
-                  onClick={() =>
-                    setPendingProduct(prev =>
-                      prev ? { ...prev, quantity: prev.quantity + 1 } : prev
-                    )
-                  }
-                  className="w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90"
-                >
-                  <Plus className="h-6 w-6" />
-                </button>
-              </div>
-
-              {/* أزرار التأكيد / الإلغاء */}
-              <div className="flex gap-3">
+              {/* أزرار التنقل */}
+              <div className="flex gap-3 pt-1">
                 <button
                   onClick={cancelPending}
-                  className="flex-1 py-4 rounded-2xl border border-border text-lg font-bold hover:bg-muted"
+                  className="flex-1 py-4 rounded-2xl border border-border text-base font-bold hover:bg-muted transition-colors"
                 >
                   ❌ إلغاء
                 </button>
                 <button
+                  onClick={proceedToQuantity}
+                  className="flex-[2] py-4 rounded-2xl bg-primary text-primary-foreground text-base font-bold hover:bg-primary/90 transition-colors"
+                >
+                  التالي — الكمية ←
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── مرحلة تأكيد الكمية ── */}
+          {pendingProduct && pendingProduct.stage === "quantity" && (
+            <motion.div
+              key="quantity-stage"
+              initial={{ opacity: 0, x: 60 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -60 }}
+              className="p-4 space-y-5"
+            >
+              {/* معاينة المنتج المختار */}
+              <div className="flex flex-col items-center gap-3 py-2">
+                {pendingProduct.selectedImage ? (
+                  <img
+                    src={pendingProduct.selectedImage}
+                    alt={pendingProduct.productQuery}
+                    className="w-32 h-32 rounded-2xl object-cover shadow-lg border-2 border-primary/20"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "https://placehold.co/200x200?text=📦";
+                    }}
+                  />
+                ) : (
+                  <div className="w-32 h-32 rounded-2xl bg-muted flex items-center justify-center text-5xl">
+                    {pendingProduct.dbProduct?.emoji || "📦"}
+                  </div>
+                )}
+                <div className="text-center">
+                  <h3 className="text-xl font-bold">{pendingProduct.productQuery}</h3>
+                  {pendingProduct.selectedTitle && (
+                    <p className="text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">
+                      {pendingProduct.selectedTitle}
+                    </p>
+                  )}
+                  {pendingProduct.dbProduct?.price && (
+                    <p className="text-sm text-primary font-bold mt-1">
+                      {pendingProduct.dbProduct.price} ر.س / {pendingProduct.detectedUnit || pendingProduct.dbProduct?.unit || "حبة"}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* اختيار الكمية */}
+              <div className="bg-muted/50 rounded-2xl p-5">
+                <p className="text-center text-sm text-muted-foreground mb-4 font-medium">
+                  كم تريد؟
+                </p>
+                <div className="flex items-center justify-center gap-6">
+                  <button
+                    onClick={() =>
+                      setPendingProduct(prev =>
+                        prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : prev
+                      )
+                    }
+                    className="w-16 h-16 rounded-full bg-background border-2 border-border flex items-center justify-center hover:bg-muted transition-colors shadow-sm"
+                  >
+                    <Minus className="h-7 w-7" />
+                  </button>
+                  <div className="text-center min-w-[80px]">
+                    <span className="text-5xl font-black text-primary">{pendingProduct.quantity}</span>
+                    <p className="text-sm text-muted-foreground mt-1 font-medium">
+                      {pendingProduct.detectedUnit || pendingProduct.dbProduct?.unit || "حبة"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() =>
+                      setPendingProduct(prev =>
+                        prev ? { ...prev, quantity: prev.quantity + 1 } : prev
+                      )
+                    }
+                    className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors shadow-md"
+                  >
+                    <Plus className="h-7 w-7" />
+                  </button>
+                </div>
+              </div>
+
+              {/* أزرار التأكيد */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setPendingProduct(prev => prev ? { ...prev, stage: "image" } : prev)}
+                  className="flex-1 py-4 rounded-2xl border border-border text-base font-bold hover:bg-muted transition-colors"
+                >
+                  ← رجوع
+                </button>
+                <button
                   onClick={confirmAddToCart}
-                  className="flex-2 flex-grow py-4 rounded-2xl bg-primary text-primary-foreground text-lg font-bold hover:bg-primary/90"
+                  className="flex-[2] py-4 rounded-2xl bg-primary text-primary-foreground text-base font-bold hover:bg-primary/90 transition-colors shadow-md"
                 >
                   ✅ أضف للسلة
                 </button>
@@ -495,12 +607,14 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
             </button>
             <p className="text-lg mt-6 text-center font-medium">
               {loadingImages
-                ? "⏳ جاري البحث عن الصور..."
+                ? "⏳ جاري البحث في Google..."
                 : isListening
                 ? "جاري الاستماع... تكلّم الآن"
                 : "اضغط وقل اسم المنتج"}
             </p>
-            <p className="text-sm text-muted-foreground mt-1">مثال: "كرتون خيار" أو "كيلو طماطم"</p>
+            <p className="text-sm text-muted-foreground mt-1 text-center">
+              مثال: "حليب المراعي" أو "كيلو طماطم"
+            </p>
 
             {transcript && (
               <motion.div
