@@ -7,8 +7,9 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from "@/components/ui/drawer";
-import { Minus, Plus, ShoppingCart } from "lucide-react";
+import { ShoppingCart, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
 
 const ALL_UNITS: Record<string, { emoji: string; label: string }> = {
   "حبة": { emoji: "1️⃣", label: "حبة" },
@@ -23,6 +24,8 @@ const ALL_UNITS: Record<string, { emoji: string; label: string }> = {
 };
 
 const DEFAULT_UNITS = ["حبة", "كرتون", "كيلو"];
+
+const QUICK_QUANTITIES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 interface ProductQuantityDrawerProps {
   open: boolean;
@@ -52,9 +55,9 @@ const ProductQuantityDrawer = ({
   onAdd,
   onUpdateQty,
 }: ProductQuantityDrawerProps) => {
+  const [step, setStep] = useState<"unit" | "quantity">("unit");
   const [selectedUnit, setSelectedUnit] = useState(currentUnit);
-  const [qty, setQty] = useState(currentQty || 1);
-  const [unitQuantities, setUnitQuantities] = useState<Record<string, number>>({});
+  const [selectedQty, setSelectedQty] = useState(currentQty || 1);
 
   const units = (unitOptions && unitOptions.length > 0 ? unitOptions : DEFAULT_UNITS)
     .map((u) => ({ value: u, ...(ALL_UNITS[u] || { emoji: "📦", label: u }) }));
@@ -64,8 +67,14 @@ const ProductQuantityDrawer = ({
     if (open && product) {
       const defaultUnit = currentUnit || product.unit || "حبة";
       setSelectedUnit(defaultUnit);
-      setQty(currentQty || 1);
-      setUnitQuantities(currentQty > 0 ? { [defaultUnit]: currentQty } : {});
+      setSelectedQty(currentQty || 1);
+      // If only one unit option, skip to quantity step
+      if (units.length === 1) {
+        setSelectedUnit(units[0].value);
+        setStep("quantity");
+      } else {
+        setStep("unit");
+      }
     }
   }, [open, product?.id]);
 
@@ -75,39 +84,37 @@ const ProductQuantityDrawer = ({
 
   if (!product) return null;
 
-  const handleUnitQtyChange = (unit: string, delta: number) => {
-    setUnitQuantities((prev) => {
-      const current = prev[unit] || 0;
-      const next = Math.max(0, current + delta);
-      const updated = { ...prev };
-      if (next === 0) {
-        delete updated[unit];
-      } else {
-        updated[unit] = next;
-      }
-      if (next > 0) setSelectedUnit(unit);
-      const total = Object.values(updated).reduce((s, v) => s + v, 0);
-      setQty(total || 1);
-      return updated;
-    });
+  const handleUnitSelect = (unit: string) => {
+    setSelectedUnit(unit);
+    setSelectedQty(1);
+    setStep("quantity");
+  };
+
+  const handleQtySelect = (qty: number) => {
+    setSelectedQty(qty);
   };
 
   const handleConfirm = () => {
-    const totalQty = Object.values(unitQuantities).reduce((s, v) => s + v, 0);
-    if (totalQty === 0) return;
+    if (selectedQty === 0) return;
     if (currentQty > 0) {
-      onUpdateQty(totalQty);
+      onUpdateQty(selectedQty);
     } else {
-      onAdd(selectedUnit, totalQty);
+      onAdd(selectedUnit, selectedQty);
     }
     onClose();
   };
+
+  const handleBack = () => {
+    setStep("unit");
+  };
+
+  const unitInfo = ALL_UNITS[selectedUnit] || { emoji: "📦", label: selectedUnit };
 
   return (
     <Drawer open={open} onOpenChange={handleOpenChange}>
       <DrawerContent className="max-h-[85vh] flex flex-col">
         <DrawerHeader className="text-center pb-2 flex-shrink-0">
-          <div className="flex flex-col items-center gap-2 mb-2">
+          <div className="flex flex-col items-center gap-2 mb-1">
             {product.image_url ? (
               <img
                 src={product.image_url}
@@ -120,74 +127,103 @@ const ProductQuantityDrawer = ({
             <DrawerTitle className="text-2xl font-bold">
               {product.name_ar}
             </DrawerTitle>
-            <DrawerDescription>
-              {product.price ? `${product.price} ر.س` : "اختر الوحدة والكمية"}
+            <DrawerDescription className="text-lg">
+              {step === "unit" ? "اختر الوحدة" : `كم ${unitInfo.label}؟`}
             </DrawerDescription>
           </div>
         </DrawerHeader>
 
         <div className="flex-1 overflow-y-auto px-4 pb-2">
-          <div className="space-y-2">
-            {units.map((u) => {
-              const unitQty = unitQuantities[u.value] || 0;
-              const isActive = unitQty > 0;
-              return (
-                <div
-                  key={u.value}
-                  className={cn(
-                    "flex items-center justify-between p-3 rounded-2xl transition-all border-2",
-                    isActive
-                      ? "bg-primary/10 border-primary"
-                      : "bg-muted/50 border-transparent"
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-[32px]">{u.emoji}</span>
-                    <span className="text-lg font-bold">{u.label}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {isActive && (
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-11 w-11 rounded-xl"
-                        onClick={() => handleUnitQtyChange(u.value, -1)}
-                      >
-                        <Minus className="h-5 w-5" />
-                      </Button>
+          <AnimatePresence mode="wait">
+            {step === "unit" ? (
+              <motion.div
+                key="unit-step"
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                transition={{ duration: 0.2 }}
+                className="grid grid-cols-2 gap-3"
+              >
+                {units.map((u) => (
+                  <motion.button
+                    key={u.value}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleUnitSelect(u.value)}
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-3 transition-all",
+                      "bg-muted/50 border-transparent hover:border-primary hover:bg-primary/10",
+                      "min-h-[100px]"
                     )}
-                    {isActive && (
-                      <span className="text-2xl font-bold min-w-[32px] text-center">
-                        {unitQty}
-                      </span>
-                    )}
-                    <Button
-                      size="icon"
+                  >
+                    <span className="text-[40px]">{u.emoji}</span>
+                    <span className="text-xl font-bold">{u.label}</span>
+                  </motion.button>
+                ))}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="qty-step"
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                {/* Back button to change unit */}
+                {units.length > 1 && (
+                  <button
+                    onClick={handleBack}
+                    className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-base"
+                  >
+                    <ArrowRight className="h-5 w-5" />
+                    <span>تغيير الوحدة ({unitInfo.emoji} {unitInfo.label})</span>
+                  </button>
+                )}
+
+                {/* Quantity grid - large buttons */}
+                <div className="grid grid-cols-5 gap-3">
+                  {QUICK_QUANTITIES.map((q) => (
+                    <motion.button
+                      key={q}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => handleQtySelect(q)}
                       className={cn(
-                        "h-11 w-11 rounded-xl",
-                        !isActive && "bg-muted text-foreground hover:bg-primary hover:text-primary-foreground"
+                        "aspect-square rounded-2xl flex items-center justify-center text-3xl font-bold transition-all border-3",
+                        selectedQty === q
+                          ? "bg-primary text-primary-foreground border-primary shadow-lg scale-105"
+                          : "bg-muted/50 border-transparent hover:border-primary/50"
                       )}
-                      onClick={() => handleUnitQtyChange(u.value, 1)}
                     >
-                      <Plus className="h-5 w-5" />
-                    </Button>
-                  </div>
+                      {q}
+                    </motion.button>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
+
+                {/* Selected summary */}
+                <div className="text-center py-2">
+                  <span className="text-2xl font-bold text-primary">
+                    {selectedQty} {unitInfo.label} {unitInfo.emoji}
+                  </span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        <div className="flex-shrink-0 px-4 pb-6 pt-3 border-t border-border">
-          <Button
-            onClick={handleConfirm}
-            disabled={Object.values(unitQuantities).reduce((s, v) => s + v, 0) === 0}
-            className="w-full h-16 text-xl rounded-2xl gap-3"
-          >
-            <ShoppingCart className="h-7 w-7" />
-            {currentQty > 0 ? "تحديث الكمية" : "أضف للسلة ✅"}
-          </Button>
-        </div>
+        {step === "quantity" && (
+          <div className="flex-shrink-0 px-4 pb-6 pt-3 border-t border-border">
+            <Button
+              onClick={handleConfirm}
+              disabled={selectedQty === 0}
+              className="w-full h-16 text-xl rounded-2xl gap-3"
+            >
+              <ShoppingCart className="h-7 w-7" />
+              {currentQty > 0
+                ? `تحديث → ${selectedQty} ${unitInfo.label}`
+                : `أضف ${selectedQty} ${unitInfo.label} للسلة ✅`}
+            </Button>
+          </div>
+        )}
       </DrawerContent>
     </Drawer>
   );
