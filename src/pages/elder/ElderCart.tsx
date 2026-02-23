@@ -35,21 +35,31 @@ const ElderCart = () => {
       return;
     }
 
-    // Build Arabic text to read
-    const itemsText = items
-      .map((item) => {
-        const qty = item.quantity;
-        const unit = item.unit || "حبة";
-        return `${item.name}، ${qty} ${unit}`;
-      })
-      .join("، ");
+    // Build natural Arabic text to read
+    const itemLines = items.map((item, idx) => {
+      const qty = item.quantity;
+      const unit = item.unit || "حبة";
+      // Natural phrasing: "3 كيلو طماطم" instead of "طماطم، 3 كيلو"
+      return `${qty} ${unit} ${item.name}`;
+    });
 
-    const fullText = `طلبك يحتوي على: ${itemsText}. المجموع ${total.toFixed(0)} ريال سعودي.`;
+    let itemsText: string;
+    if (itemLines.length === 1) {
+      itemsText = itemLines[0];
+    } else if (itemLines.length === 2) {
+      itemsText = `${itemLines[0]}... و ${itemLines[1]}`;
+    } else {
+      const last = itemLines.pop()!;
+      itemsText = itemLines.join("... ") + `... و ${last}`;
+    }
+
+    const totalText = total > 0 ? ` المجموع: ${total.toFixed(0)} ريال.` : "";
+    const fullText = `عندك في السلة: ${itemsText}.${totalText}`;
 
     const utterance = new SpeechSynthesisUtterance(fullText);
     utterance.lang = "ar-SA";
-    utterance.rate = 0.85;
-    utterance.pitch = 1;
+    utterance.rate = 0.8;
+    utterance.pitch = 1.05;
 
     // Try to pick an Arabic voice if available
     const voices = window.speechSynthesis.getVoices();
