@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
-import { Mic, MicOff, X, Plus, Minus, Check, RefreshCw } from "lucide-react";
+import { Mic, MicOff, X, Check, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -140,9 +140,24 @@ interface PendingProduct {
   selectedImage: string | null;
   selectedTitle: string | null;
   quantity: number;
-  // مرحلة العرض: "image" = اختيار الصورة، "quantity" = تأكيد الكمية
-  stage: "image" | "quantity";
+  selectedUnit: string;
+  // مرحلة العرض: "image" = اختيار الصورة، "unit" = اختيار الوحدة، "quantity" = تأكيد الكمية
+  stage: "image" | "unit" | "quantity";
 }
+
+const VOICE_QUICK_QUANTITIES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+const ALL_UNITS_MAP: Record<string, { emoji: string; label: string }> = {
+  "حبة": { emoji: "1️⃣", label: "حبة" },
+  "كرتون": { emoji: "📦", label: "كرتون" },
+  "صحن": { emoji: "🍽️", label: "صحن" },
+  "كيلو": { emoji: "⚖️", label: "كيلو" },
+  "كيس": { emoji: "🛍️", label: "كيس" },
+  "حزمة": { emoji: "🌿", label: "حزمة" },
+  "درزن": { emoji: "🥚", label: "درزن" },
+  "علبة": { emoji: "🥫", label: "علبة" },
+  "ربطة": { emoji: "🧻", label: "ربطة" },
+};
 
 // ─── المكوّن الرئيسي ─────────────────────────────────────────────
 const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
@@ -262,7 +277,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
       const hasDbImage = !!(dbProduct?.image_url);
 
       if (hasDbImage) {
-        // المنتج عنده صورة → نذهب مباشرة لمرحلة الكمية
+        // المنتج عنده صورة → نذهب مباشرة لمرحلة اختيار الوحدة
         setPendingProduct({
           productQuery,
           detectedUnit,
@@ -273,7 +288,8 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
           selectedImage: dbProduct.image_url,
           selectedTitle: null,
           quantity: detectedQuantity,
-          stage: "quantity",
+          selectedUnit: detectedUnit || dbProduct?.unit || "حبة",
+          stage: "unit",
         });
       } else {
         // المنتج بدون صورة أو غير موجود في DB → نبحث في DuckDuckGo بالجملة الكاملة
@@ -291,7 +307,8 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
           selectedImage: images[0] || null,
           selectedTitle: titles[0] || null,
           quantity: detectedQuantity,
-          stage: images.length > 0 ? "image" : "quantity",
+          selectedUnit: detectedUnit || dbProduct?.unit || "حبة",
+          stage: images.length > 0 ? "image" : "unit",
         });
       }
     };
@@ -300,16 +317,15 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
   // الانتقال من مرحلة الصورة إلى مرحلة الكمية
   const proceedToQuantity = () => {
     if (!pendingProduct) return;
-    // لو ما اختار صورة، نستخدم الأولى
     const img = pendingProduct.selectedImage || pendingProduct.images[0] || null;
-    setPendingProduct(prev => prev ? { ...prev, selectedImage: img, stage: "quantity" } : prev);
+    setPendingProduct(prev => prev ? { ...prev, selectedImage: img, stage: "unit" } : prev);
   };
 
   // تأكيد الإضافة للسلة
   const confirmAddToCart = () => {
     if (!pendingProduct) return;
-    const { productQuery, detectedUnit, dbProduct, selectedImage, quantity } = pendingProduct;
-    const unitLabel = detectedUnit || dbProduct?.unit || "حبة";
+    const { productQuery, dbProduct, selectedImage, quantity, selectedUnit } = pendingProduct;
+    const unitLabel = selectedUnit || "حبة";
 
     if (dbProduct) {
       addItem({
@@ -338,7 +354,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
       supabase.from("suggested_products").insert({
         tenant_id: tenantId,
         name_ar: productQuery,
-        unit: detectedUnit,
+        unit: selectedUnit,
         suggested_by: user?.id,
       });
     }
@@ -521,7 +537,79 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
             </motion.div>
           )}
 
-          {/* ── مرحلة تأكيد الكمية ── */}
+          {/* ── مرحلة اختيار الوحدة (صوتي) ── */}
+          {pendingProduct && pendingProduct.stage === "unit" && (
+            <motion.div
+              key="unit-stage"
+              initial={{ opacity: 0, x: 60 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -60 }}
+              className="p-4 space-y-5"
+            >
+              {/* معاينة المنتج */}
+              <div className="flex flex-col items-center gap-3 py-2">
+                {pendingProduct.selectedImage ? (
+                  <img
+                    src={pendingProduct.selectedImage}
+                    alt={pendingProduct.productQuery}
+                    className="w-24 h-24 rounded-2xl object-cover shadow-lg border-2 border-primary/20"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "https://placehold.co/200x200?text=📦";
+                    }}
+                  />
+                ) : (
+                  <div className="w-24 h-24 rounded-2xl bg-muted flex items-center justify-center text-5xl">
+                    {pendingProduct.dbProduct?.emoji || "📦"}
+                  </div>
+                )}
+                <h3 className="text-xl font-bold">{pendingProduct.productQuery}</h3>
+                <p className="text-lg text-muted-foreground">اختر الوحدة</p>
+              </div>
+
+              {/* أزرار الوحدات */}
+              {(() => {
+                const unitsList = (pendingProduct.dbProduct?.category_id ? [] : ["حبة", "كرتون", "كيلو"]);
+                // Try to get category unit_options if available
+                const defaultUnits = unitsList.length > 0 ? unitsList : ["حبة", "كرتون", "كيلو"];
+                const displayUnits = defaultUnits.map(u => ({
+                  value: u,
+                  ...(ALL_UNITS_MAP[u] || { emoji: "📦", label: u })
+                }));
+                return (
+                  <div className="grid grid-cols-2 gap-3">
+                    {displayUnits.map((u) => (
+                      <motion.button
+                        key={u.value}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          setPendingProduct(prev => prev ? {
+                            ...prev,
+                            selectedUnit: u.value,
+                            quantity: 1,
+                            stage: "quantity"
+                          } : prev);
+                        }}
+                        className="flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-transparent bg-muted/50 hover:border-primary hover:bg-primary/10 min-h-[100px] transition-all"
+                      >
+                        <span className="text-[40px]">{u.emoji}</span>
+                        <span className="text-xl font-bold">{u.label}</span>
+                      </motion.button>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* زر إلغاء */}
+              <button
+                onClick={cancelPending}
+                className="w-full py-4 rounded-2xl border border-border text-base font-bold hover:bg-muted transition-colors"
+              >
+                ❌ إلغاء
+              </button>
+            </motion.div>
+          )}
+
+          {/* ── مرحلة تأكيد الكمية (صوتي) ── */}
           {pendingProduct && pendingProduct.stage === "quantity" && (
             <motion.div
               key="quantity-stage"
@@ -531,78 +619,69 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
               className="p-4 space-y-5"
             >
               {/* معاينة المنتج المختار */}
-              <div className="flex flex-col items-center gap-3 py-2">
+              <div className="flex flex-col items-center gap-2 py-2">
                 {pendingProduct.selectedImage ? (
                   <img
                     src={pendingProduct.selectedImage}
                     alt={pendingProduct.productQuery}
-                    className="w-32 h-32 rounded-2xl object-cover shadow-lg border-2 border-primary/20"
+                    className="w-20 h-20 rounded-2xl object-cover shadow-lg border-2 border-primary/20"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = "https://placehold.co/200x200?text=📦";
                     }}
                   />
                 ) : (
-                  <div className="w-32 h-32 rounded-2xl bg-muted flex items-center justify-center text-5xl">
+                  <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center text-4xl">
                     {pendingProduct.dbProduct?.emoji || "📦"}
                   </div>
                 )}
-                <div className="text-center">
-                  <h3 className="text-xl font-bold">{pendingProduct.productQuery}</h3>
-                  {pendingProduct.selectedTitle && (
-                    <p className="text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">
-                      {pendingProduct.selectedTitle}
-                    </p>
-                  )}
-                  {pendingProduct.dbProduct?.price && (
-                    <p className="text-sm text-primary font-bold mt-1">
-                      {pendingProduct.dbProduct.price} ر.س / {pendingProduct.detectedUnit || pendingProduct.dbProduct?.unit || "حبة"}
-                    </p>
-                  )}
-                </div>
+                <h3 className="text-xl font-bold">{pendingProduct.productQuery}</h3>
+                <p className="text-lg text-muted-foreground">
+                  كم {ALL_UNITS_MAP[pendingProduct.selectedUnit]?.label || pendingProduct.selectedUnit}؟
+                </p>
+
+                {/* زر تغيير الوحدة */}
+                <button
+                  onClick={() => setPendingProduct(prev => prev ? { ...prev, stage: "unit" } : prev)}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                >
+                  تغيير الوحدة ({ALL_UNITS_MAP[pendingProduct.selectedUnit]?.emoji} {ALL_UNITS_MAP[pendingProduct.selectedUnit]?.label || pendingProduct.selectedUnit})
+                </button>
               </div>
 
-              {/* اختيار الكمية */}
-              <div className="bg-muted/50 rounded-2xl p-5">
-                <p className="text-center text-sm text-muted-foreground mb-4 font-medium">
-                  كم تريد؟
-                </p>
-                <div className="flex items-center justify-center gap-6">
-                  <button
+              {/* شبكة أرقام */}
+              <div className="grid grid-cols-5 gap-3">
+                {VOICE_QUICK_QUANTITIES.map((q) => (
+                  <motion.button
+                    key={q}
+                    whileTap={{ scale: 0.9 }}
                     onClick={() =>
-                      setPendingProduct(prev =>
-                        prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : prev
-                      )
+                      setPendingProduct(prev => prev ? { ...prev, quantity: q } : prev)
                     }
-                    className="w-16 h-16 rounded-full bg-background border-2 border-border flex items-center justify-center hover:bg-muted transition-colors shadow-sm"
+                    className={`aspect-square rounded-2xl flex items-center justify-center text-3xl font-bold transition-all border-3 ${
+                      pendingProduct.quantity === q
+                        ? "bg-primary text-primary-foreground border-primary shadow-lg scale-105"
+                        : "bg-muted/50 border-transparent hover:border-primary/50"
+                    }`}
                   >
-                    <Minus className="h-7 w-7" />
-                  </button>
-                  <div className="text-center min-w-[80px]">
-                    <span className="text-5xl font-black text-primary">{pendingProduct.quantity}</span>
-                    <p className="text-sm text-muted-foreground mt-1 font-medium">
-                      {pendingProduct.detectedUnit || pendingProduct.dbProduct?.unit || "حبة"}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() =>
-                      setPendingProduct(prev =>
-                        prev ? { ...prev, quantity: prev.quantity + 1 } : prev
-                      )
-                    }
-                    className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors shadow-md"
-                  >
-                    <Plus className="h-7 w-7" />
-                  </button>
-                </div>
+                    {q}
+                  </motion.button>
+                ))}
+              </div>
+
+              {/* ملخص */}
+              <div className="text-center py-1">
+                <span className="text-2xl font-bold text-primary">
+                  {pendingProduct.quantity} {ALL_UNITS_MAP[pendingProduct.selectedUnit]?.label || pendingProduct.selectedUnit} {ALL_UNITS_MAP[pendingProduct.selectedUnit]?.emoji || "📦"}
+                </span>
               </div>
 
               {/* أزرار التأكيد */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => setPendingProduct(prev => prev ? { ...prev, stage: "image" } : prev)}
+                  onClick={cancelPending}
                   className="flex-1 py-4 rounded-2xl border border-border text-base font-bold hover:bg-muted transition-colors"
                 >
-                  ← رجوع
+                  ❌ إلغاء
                 </button>
                 <button
                   onClick={confirmAddToCart}
