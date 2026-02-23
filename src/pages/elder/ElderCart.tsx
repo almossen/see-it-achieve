@@ -50,8 +50,8 @@ const ElderCart = () => {
       itemsText = itemLines.join("، ") + `، و ${last}`;
     }
 
-    const totalText = total > 0 ? ` المجموع: ${total.toFixed(0)} ريال.` : "";
-    const fullText = `عندك في السلة: ${itemsText}.${totalText}`;
+    const totalText = total > 0 ? ` يطلع المجموع: ${total.toFixed(0)} ريال.` : "";
+    const fullText = `عندك في السلة يالغالي: ${itemsText}.${totalText}`;
 
     setLoadingAudio(true);
     try {
