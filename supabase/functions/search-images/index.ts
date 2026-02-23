@@ -5,29 +5,101 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ─── تحسين استعلام البحث لجلب صور المنتجات بدقة أعلى ───────────
+// ─── بناء استعلام بحث محسّن للمنتجات ──────────────────────────
 function buildSearchQuery(query: string): string {
   const trimmed = query.trim();
-
-  // إذا كان الاستعلام يحتوي على براند معروف، نضيف كلمة "product" لتحسين النتائج
-  const brandKeywords = [
-    "المراعي", "نادك", "الروضة", "الطائف", "بيورا", "نستله", "دانون",
-    "لولو", "كارفور", "بنده", "مزرعة", "الصافي", "القصيم",
-    "almarai", "nadec", "nestle", "danone", "panda", "lulu",
-  ];
-
-  const hasBrand = brandKeywords.some((b) =>
-    trimmed.toLowerCase().includes(b.toLowerCase())
-  );
-
-  // بناء استعلام محسّن: نضيف "منتج" أو "product" لتحسين جودة الصور
-  if (hasBrand) {
-    return `${trimmed} منتج بقالة`;
-  }
-
-  return `${trimmed} منتج بقالة سعودي`;
+  // نضيف "product" أو "منتج" لتحسين دقة نتائج الصور
+  return `${trimmed} منتج بقالة`;
 }
 
+// ─── جلب vqd token من DuckDuckGo (مطلوب لطلب الصور) ──────────
+async function getVqd(query: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "ar,en;q=0.9",
+        },
+      }
+    );
+    const html = await res.text();
+    // استخراج vqd من الـ HTML
+    const match = html.match(/vqd=['"]([^'"]+)['"]/);
+    if (match) return match[1];
+    // طريقة بديلة
+    const match2 = html.match(/vqd=([^&"'\s]+)/);
+    if (match2) return match2[1];
+    return null;
+  } catch (e) {
+    console.error("getVqd error:", e);
+    return null;
+  }
+}
+
+// ─── جلب الصور من DuckDuckGo ───────────────────────────────────
+async function searchDuckDuckGoImages(
+  query: string,
+  count: number
+): Promise<{ images: string[]; titles: string[] }> {
+  try {
+    const vqd = await getVqd(query);
+    if (!vqd) {
+      console.error("Could not get vqd token");
+      return { images: [], titles: [] };
+    }
+
+    const params = new URLSearchParams({
+      l: "ar-sa",
+      o: "json",
+      q: query,
+      vqd: vqd,
+      f: ",,,,,",
+      p: "1", // SafeSearch moderate
+    });
+
+    const res = await fetch(
+      `https://duckduckgo.com/i.js?${params.toString()}`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "application/json, text/javascript, */*; q=0.01",
+          "Accept-Language": "ar,en;q=0.9",
+          "Referer": `https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      }
+    );
+
+    if (!res.ok) {
+      console.error("DuckDuckGo images request failed:", res.status);
+      return { images: [], titles: [] };
+    }
+
+    const data = await res.json();
+    const results = (data.results || []).slice(0, count);
+
+    const images: string[] = [];
+    const titles: string[] = [];
+
+    for (const item of results) {
+      if (item.image) {
+        images.push(item.image);
+        titles.push(item.title || "");
+      }
+    }
+
+    console.log(`DuckDuckGo returned ${images.length} images for: "${query}"`);
+    return { images, titles };
+  } catch (e) {
+    console.error("DuckDuckGo search error:", e);
+    return { images: [], titles: [] };
+  }
+}
+
+// ─── الـ Handler الرئيسي ───────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -37,81 +109,35 @@ serve(async (req) => {
     const { query, count = 6 } = await req.json();
 
     if (!query) {
-      return new Response(JSON.stringify({ images: [], titles: [] }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const apiKey = Deno.env.get("GOOGLE_SEARCH_API_KEY");
-    const cx = Deno.env.get("GOOGLE_SEARCH_CX");
-
-    if (!apiKey || !cx) {
-      console.error("Missing GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_CX");
-      return new Response(JSON.stringify({ images: [], titles: [] }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const searchQuery = buildSearchQuery(query);
-    const numResults = Math.min(Math.max(count, 2), 10); // بين 2 و 10
-
-    const url = new URL("https://www.googleapis.com/customsearch/v1");
-    url.searchParams.set("key", apiKey);
-    url.searchParams.set("cx", cx);
-    url.searchParams.set("q", searchQuery);
-    url.searchParams.set("searchType", "image");
-    url.searchParams.set("num", String(numResults));
-    url.searchParams.set("imgSize", "medium");
-    url.searchParams.set("imgType", "photo");
-    url.searchParams.set("safe", "active");
-    // تفضيل الصور المربعة (مناسبة لعرض المنتجات)
-    url.searchParams.set("imgColorType", "color");
-
-    console.log(`Searching Google Images for: "${searchQuery}" (${numResults} results)`);
-
-    const res = await fetch(url.toString());
-    const data = await res.json();
-
-    if (data.error) {
-      console.error("Google API error:", JSON.stringify(data.error));
       return new Response(
-        JSON.stringify({
-          images: [],
-          titles: [],
-          error: data.error.message,
-        }),
-        {
-          status: 200, // نرجع 200 حتى لا يكسر الـ frontend
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        JSON.stringify({ images: [], titles: [] }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const items = data.items || [];
+    const searchQuery = buildSearchQuery(query);
+    const numResults = Math.min(Math.max(count, 2), 10);
 
-    // نرجع الصور مع عناوينها لعرض اسم البراند تحت كل صورة
-    const images: string[] = [];
-    const titles: string[] = [];
-    const contextLinks: string[] = [];
+    console.log(`Searching DuckDuckGo for: "${searchQuery}"`);
 
-    for (const item of items) {
-      if (item.link) {
-        images.push(item.link);
-        titles.push(item.title || "");
-        contextLinks.push(item.image?.contextLink || "");
-      }
+    const { images, titles } = await searchDuckDuckGoImages(searchQuery, numResults);
+
+    // إذا ما رجعت نتائج، نجرب بدون إضافة "منتج بقالة"
+    if (images.length === 0) {
+      console.log("Retrying with original query:", query);
+      const fallback = await searchDuckDuckGoImages(query, numResults);
+      return new Response(
+        JSON.stringify({ images: fallback.images, titles: fallback.titles }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    console.log(`Returned ${images.length} images for query: "${searchQuery}"`);
-
     return new Response(
-      JSON.stringify({ images, titles, contextLinks }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ images, titles }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Search images error:", error);
+    console.error("search-images error:", error);
     return new Response(
       JSON.stringify({ images: [], titles: [], error: String(error) }),
       {
