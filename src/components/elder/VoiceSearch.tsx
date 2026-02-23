@@ -238,16 +238,24 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
 
       const rankMatch = (p: { name_ar: string; name_en: string | null }) => {
         const stored = normalizeArabic(p.name_ar);
+        // مطابقة تامة
         if (stored === normalizedQuery) return 4;
+        // الاستعلام الكامل موجود في اسم المنتج أو العكس
         if (stored.includes(normalizedQuery) || normalizedQuery.includes(stored)) return 3;
-        if (words.every(w => stored.includes(w))) return 2;
-        if (words.some(w => stored.includes(w))) return 1;
+        // كل كلمات الاستعلام موجودة في اسم المنتج (مطابقة قوية)
+        if (words.length >= 2 && words.every(w => stored.includes(w))) return 2;
+        // كلمة واحدة فقط تطابق — نقبل فقط إذا كانت الجملة كلمة واحدة
+        if (words.length === 1 && words.some(w => stored.includes(w))) return 1;
         return 0;
       };
 
+      // نقبل المنتج فقط إذا كان rank >= 2 (مطابقة قوية)
+      // rank=1 يعني كلمة واحدة فقط تطابقت من جملة متعددة الكلمات → نتجاهله
+      const minAcceptableRank = words.length >= 2 ? 2 : 1;
+
       const dbProduct = data
         ?.map(p => ({ p, rank: rankMatch(p) }))
-        .filter(x => x.rank > 0)
+        .filter(x => x.rank >= minAcceptableRank)
         .sort((a, b) => b.rank - a.rank)[0]?.p || null;
 
       // إذا المنتج موجود في DB وعنده صورة → لا نبحث في DuckDuckGo
@@ -268,7 +276,7 @@ const VoiceSearch = ({ onClose }: VoiceSearchProps) => {
           stage: "quantity",
         });
       } else {
-        // المنتج بدون صورة أو غير موجود في DB → نبحث في DuckDuckGo
+        // المنتج بدون صورة أو غير موجود في DB → نبحث في DuckDuckGo بالجملة الكاملة
         setLoadingImages(true);
         const { images, titles } = await fetchGoogleImages(resolvedQuery);
         setLoadingImages(false);
