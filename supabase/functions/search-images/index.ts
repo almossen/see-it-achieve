@@ -5,14 +5,33 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ─── بناء استعلام بحث محسّن للمنتجات ──────────────────────────
+// ─── براندات سعودية معروفة ──────────────────────────────────────
+const SAUDI_BRANDS = [
+  "المراعي", "نادك", "الروضة", "الصافي", "القصيم", "الطائف",
+  "بيورا", "نجد", "الجوف", "حائل", "الدرعية", "سدير",
+  "almarai", "nadec", "alsafi", "bayara",
+];
+
+// ─── بناء استعلام محسّن للمنتجات السعودية ──────────────────────
 function buildSearchQuery(query: string): string {
   const trimmed = query.trim();
-  // نضيف "product" أو "منتج" لتحسين دقة نتائج الصور
-  return `${trimmed} منتج بقالة`;
+  const lower = trimmed.toLowerCase();
+
+  // إذا كان الاستعلام يحتوي على براند سعودي معروف
+  const hasSaudiBrand = SAUDI_BRANDS.some((b) =>
+    lower.includes(b.toLowerCase())
+  );
+
+  if (hasSaudiBrand) {
+    // البراند موجود → نبحث عن المنتج مباشرة كما هو
+    return `${trimmed} منتج`;
+  }
+
+  // لا يوجد براند → نضيف "سعودي" لتفضيل المنتجات المحلية
+  return `${trimmed} منتج سعودي`;
 }
 
-// ─── جلب vqd token من DuckDuckGo (مطلوب لطلب الصور) ──────────
+// ─── جلب vqd token من DuckDuckGo ──────────────────────────────
 async function getVqd(query: string): Promise<string | null> {
   try {
     const res = await fetch(
@@ -21,15 +40,13 @@ async function getVqd(query: string): Promise<string | null> {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "ar,en;q=0.9",
+          "Accept-Language": "ar-SA,ar;q=0.9,en;q=0.8",
         },
       }
     );
     const html = await res.text();
-    // استخراج vqd من الـ HTML
     const match = html.match(/vqd=['"]([^'"]+)['"]/);
     if (match) return match[1];
-    // طريقة بديلة
     const match2 = html.match(/vqd=([^&"'\s]+)/);
     if (match2) return match2[1];
     return null;
@@ -42,22 +59,23 @@ async function getVqd(query: string): Promise<string | null> {
 // ─── جلب الصور من DuckDuckGo ───────────────────────────────────
 async function searchDuckDuckGoImages(
   query: string,
-  count: number
+  count: number,
+  region = "xa-ar" // xa-ar = المملكة العربية السعودية بالعربية
 ): Promise<{ images: string[]; titles: string[] }> {
   try {
     const vqd = await getVqd(query);
     if (!vqd) {
-      console.error("Could not get vqd token");
+      console.error("Could not get vqd token for:", query);
       return { images: [], titles: [] };
     }
 
     const params = new URLSearchParams({
-      l: "ar-sa",
+      l: region,       // المنطقة: السعودية
       o: "json",
       q: query,
       vqd: vqd,
       f: ",,,,,",
-      p: "1", // SafeSearch moderate
+      p: "1",
     });
 
     const res = await fetch(
@@ -66,7 +84,7 @@ async function searchDuckDuckGoImages(
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "application/json, text/javascript, */*; q=0.01",
-          "Accept-Language": "ar,en;q=0.9",
+          "Accept-Language": "ar-SA,ar;q=0.9,en;q=0.8",
           "Referer": `https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`,
           "X-Requested-With": "XMLHttpRequest",
         },
@@ -91,7 +109,7 @@ async function searchDuckDuckGoImages(
       }
     }
 
-    console.log(`DuckDuckGo returned ${images.length} images for: "${query}"`);
+    console.log(`DuckDuckGo [${region}] returned ${images.length} images for: "${query}"`);
     return { images, titles };
   } catch (e) {
     console.error("DuckDuckGo search error:", e);
@@ -115,21 +133,24 @@ serve(async (req) => {
       );
     }
 
-    const searchQuery = buildSearchQuery(query);
     const numResults = Math.min(Math.max(count, 2), 10);
+    const searchQuery = buildSearchQuery(query);
 
-    console.log(`Searching DuckDuckGo for: "${searchQuery}"`);
+    console.log(`Searching: "${searchQuery}" (original: "${query}")`);
 
-    const { images, titles } = await searchDuckDuckGoImages(searchQuery, numResults);
+    // المحاولة الأولى: بحث بالمنطقة السعودية
+    let { images, titles } = await searchDuckDuckGoImages(searchQuery, numResults, "xa-ar");
 
-    // إذا ما رجعت نتائج، نجرب بدون إضافة "منتج بقالة"
+    // المحاولة الثانية: إذا ما رجعت نتائج، نجرب بدون تحديد المنطقة
+    if (images.length === 0) {
+      console.log("Retrying without region filter...");
+      ({ images, titles } = await searchDuckDuckGoImages(searchQuery, numResults, "wt-wt"));
+    }
+
+    // المحاولة الثالثة: نجرب بالاستعلام الأصلي بدون إضافات
     if (images.length === 0) {
       console.log("Retrying with original query:", query);
-      const fallback = await searchDuckDuckGoImages(query, numResults);
-      return new Response(
-        JSON.stringify({ images: fallback.images, titles: fallback.titles }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      ({ images, titles } = await searchDuckDuckGoImages(query, numResults, "wt-wt"));
     }
 
     return new Response(
