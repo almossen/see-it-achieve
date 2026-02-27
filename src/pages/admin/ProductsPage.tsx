@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search, Camera, ImagePlus, X, Sparkles, Loader2, Languages, GripVertical, ArrowUpDown } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Camera, ImagePlus, X, Sparkles, Loader2, Languages, GripVertical, ArrowUpDown, Wand2 } from "lucide-react";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -33,6 +33,7 @@ const ProductsPage = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [translating, setTranslating] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
 
   // Drag state for sort mode
   const dragIndexRef = useRef<number | null>(null);
@@ -138,6 +139,32 @@ const ProductsPage = () => {
     }
   };
 
+  const generateProductImage = async () => {
+    if (!form.name_ar.trim() || !tenantId) {
+      toast.error("أدخل اسم المنتج أولاً");
+      return;
+    }
+    setGeneratingImage(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-product-image", {
+        body: { productName: form.name_ar, tenantId },
+      });
+      if (error) throw error;
+      if (data?.imageUrl) {
+        setImagePreview(data.imageUrl);
+        setImageFile(null); // Clear file since we have a URL
+        toast.success("تم إنشاء الصورة بنجاح");
+      } else if (data?.error) {
+        throw new Error(data.error);
+      }
+    } catch (e: any) {
+      console.error("Image generation error:", e);
+      toast.error("فشل إنشاء الصورة", { description: e.message });
+    } finally {
+      setGeneratingImage(false);
+    }
+  };
+
   const handleImageSelect = (file: File | null) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
@@ -163,6 +190,9 @@ const ProductsPage = () => {
       setUploadingImage(true);
       imageUrl = await uploadImage(imageFile);
       setUploadingImage(false);
+    } else if (imagePreview && imagePreview.startsWith("http")) {
+      // AI-generated image already uploaded to storage
+      imageUrl = imagePreview;
     }
 
     const payload: any = {
@@ -359,12 +389,33 @@ const ProductsPage = () => {
                       )}
                     </div>
                   ) : (
-                    <div className="flex gap-2">
-                      <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => cameraInputRef.current?.click()}>
-                        <Camera className="h-4 w-4" /> الكاميرا
-                      </Button>
-                      <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => fileInputRef.current?.click()}>
-                        <ImagePlus className="h-4 w-4" /> اختر صورة
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => cameraInputRef.current?.click()}>
+                          <Camera className="h-4 w-4" /> الكاميرا
+                        </Button>
+                        <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => fileInputRef.current?.click()}>
+                          <ImagePlus className="h-4 w-4" /> اختر صورة
+                        </Button>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full gap-2 border-primary/30 text-primary hover:bg-primary/5"
+                        onClick={generateProductImage}
+                        disabled={generatingImage || !form.name_ar.trim()}
+                      >
+                        {generatingImage ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            جاري إنشاء الصورة...
+                          </>
+                        ) : (
+                          <>
+                            <Wand2 className="h-4 w-4" />
+                            إنشاء صورة بالذكاء الاصطناعي
+                          </>
+                        )}
                       </Button>
                     </div>
                   )}
