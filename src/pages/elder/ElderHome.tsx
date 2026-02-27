@@ -84,7 +84,11 @@ const ElderHome = () => {
                 whileTap={{ scale: 0.95 }}
                 className="bg-card border border-border rounded-2xl p-5 flex flex-col items-center gap-2 min-h-[100px] justify-center hover:border-primary/30 transition-colors"
               >
-                <span className="text-[40px]">{cat.emoji}</span>
+                {cat.image_url ? (
+                  <img src={cat.image_url} alt={cat.name_ar} className="w-16 h-16 object-contain rounded-xl" />
+                ) : (
+                  <span className="text-[40px]">{cat.emoji}</span>
+                )}
                 <span className="text-base font-bold text-center">{cat.name_ar}</span>
               </motion.div>
             </Link>
