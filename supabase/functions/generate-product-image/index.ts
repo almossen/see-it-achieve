@@ -38,7 +38,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "dall-e-3",
-        prompt: `A realistic food photography image of "${productName}" on a clean white background. High quality, well-lit, showing the product clearly as it would appear in a grocery store. No text, no labels, just the food item itself.`,
+        prompt: `A single, large, realistic photograph of "${productName}" centered on a pure white background. The item must fill most of the frame, be extremely sharp and well-lit with soft studio lighting, showing vivid natural colors and clear details. No text, no labels, no decorations, no shadows — just the food item itself, easy to recognize at a glance by elderly people.`,
         n: 1,
         size: "1024x1024",
         response_format: "b64_json",
