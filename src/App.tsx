@@ -20,6 +20,7 @@ import SuggestedProductsPage from "./pages/admin/SuggestedProductsPage";
 import OrdersPage from "./pages/admin/OrdersPage";
 import SettingsPage from "./pages/admin/SettingsPage";
 import SynonymsPage from "./pages/admin/SynonymsPage";
+import CatalogPage from "./pages/admin/CatalogPage";
 import ElderLayout from "./layouts/ElderLayout";
 import ElderHome from "./pages/elder/ElderHome";
 import ElderCategory from "./pages/elder/ElderCategory";
@@ -62,6 +63,7 @@ const App = () => (
                   <Route path="orders" element={<OrdersPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                   <Route path="synonyms" element={<SynonymsPage />} />
+                  <Route path="catalog" element={<CatalogPage />} />
                 </Route>
                 <Route path="/elder" element={<ElderLayout />}>
                   <Route index element={<ElderHome />} />

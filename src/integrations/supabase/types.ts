@@ -432,6 +432,77 @@ export type Database = {
           },
         ]
       }
+      reference_categories: {
+        Row: {
+          created_at: string
+          emoji: string | null
+          id: string
+          name_ar: string
+          name_en: string | null
+          sort_order: number | null
+        }
+        Insert: {
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          name_ar: string
+          name_en?: string | null
+          sort_order?: number | null
+        }
+        Update: {
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          name_ar?: string
+          name_en?: string | null
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
+      reference_products: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          emoji: string | null
+          id: string
+          image_url: string | null
+          name_ar: string
+          name_en: string | null
+          sort_order: number | null
+          unit: string | null
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          image_url?: string | null
+          name_ar: string
+          name_en?: string | null
+          sort_order?: number | null
+          unit?: string | null
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          image_url?: string | null
+          name_ar?: string
+          name_en?: string | null
+          sort_order?: number | null
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reference_products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "reference_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suggested_products: {
         Row: {
           created_at: string

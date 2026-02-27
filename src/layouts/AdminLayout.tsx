@@ -15,6 +15,7 @@ import {
   X,
   Lightbulb,
   Languages,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ const sidebarItems = [
   { to: "/admin/drivers", icon: Truck, label: "السائقين" },
   { to: "/admin/categories", icon: FolderOpen, label: "الفئات" },
   { to: "/admin/products", icon: Package, label: "المنتجات" },
+  { to: "/admin/catalog", icon: BookOpen, label: "الكتالوج" },
   { to: "/admin/suggested-products", icon: Lightbulb, label: "مقترحات" },
   { to: "/admin/orders", icon: ShoppingCart, label: "الطلبات" },
   { to: "/admin/synonyms", icon: Languages, label: "مرادفات" },
