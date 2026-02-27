@@ -217,21 +217,47 @@ const CategoriesPage = () => {
   const handleMerge = async () => {
     if (!mergeSource || !mergeTargetId || !tenantId) return;
     setMerging(true);
-    const { error: moveError } = await supabase
-      .from("products")
-      .update({ category_id: mergeTargetId })
-      .eq("tenant_id", tenantId)
-      .eq("category_id", mergeSource.id);
-    if (moveError) {
-      toast.error("خطأ في نقل المنتجات", { description: moveError.message });
-      setMerging(false);
-      return;
+
+    // Get products from both source and target to detect duplicates
+    const [sourceRes, targetRes] = await Promise.all([
+      supabase.from("products").select("id, name_ar").eq("tenant_id", tenantId).eq("category_id", mergeSource.id),
+      supabase.from("products").select("id, name_ar").eq("tenant_id", tenantId).eq("category_id", mergeTargetId),
+    ]);
+
+    const sourceProducts = sourceRes.data || [];
+    const targetNames = new Set((targetRes.data || []).map((p: any) => p.name_ar));
+
+    // Split into unique (to move) and duplicates (to delete)
+    const toMove = sourceProducts.filter(p => !targetNames.has(p.name_ar));
+    const toDelete = sourceProducts.filter(p => targetNames.has(p.name_ar));
+
+    // Move unique products
+    if (toMove.length > 0) {
+      const { error } = await supabase
+        .from("products")
+        .update({ category_id: mergeTargetId })
+        .in("id", toMove.map(p => p.id));
+      if (error) {
+        toast.error("خطأ في نقل المنتجات", { description: error.message });
+        setMerging(false);
+        return;
+      }
     }
+
+    // Delete duplicate products
+    if (toDelete.length > 0) {
+      await supabase.from("products").delete().in("id", toDelete.map(p => p.id));
+    }
+
+    // Delete source category
     const { error: deleteError } = await supabase.from("categories").delete().eq("id", mergeSource.id);
     if (deleteError) {
       toast.error("خطأ في حذف الفئة", { description: deleteError.message });
     } else {
-      toast.success(`تم دمج "${mergeSource.name_ar}" ونقل ${mergeProductCount} منتج`);
+      const msg = toDelete.length > 0
+        ? `تم دمج "${mergeSource.name_ar}" — نُقل ${toMove.length} منتج وحُذف ${toDelete.length} مكرر`
+        : `تم دمج "${mergeSource.name_ar}" ونقل ${toMove.length} منتج`;
+      toast.success(msg);
     }
     setMerging(false);
     setMergeSource(null);
