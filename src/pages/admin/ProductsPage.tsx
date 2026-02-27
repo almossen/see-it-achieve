@@ -325,7 +325,7 @@ const ProductsPage = () => {
                   <Label>الفئة</Label>
                   <Select value={form.category_id} onValueChange={(v) => setForm({ ...form, category_id: v })}>
                     <SelectTrigger><SelectValue placeholder="اختر فئة" /></SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="popper" sideOffset={4} className="max-h-60">
                       {categories.map((c) => (
                         <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name_ar}</SelectItem>
                       ))}
