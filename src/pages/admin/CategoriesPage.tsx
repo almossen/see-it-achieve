@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, GripVertical, Pencil, Trash2, Camera, ImagePlus, X } from "lucide-react";
+import { Plus, GripVertical, Pencil, Trash2, Camera, ImagePlus, X, Merge, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ALL_UNIT_OPTIONS = [
@@ -48,6 +48,16 @@ const CategoriesPage = () => {
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Merge state
+  const [mergeSource, setMergeSource] = useState<any | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState<string>("");
+  const [merging, setMerging] = useState(false);
+  const [mergeProductCount, setMergeProductCount] = useState<number>(0);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [deleteProductCount, setDeleteProductCount] = useState<number>(0);
 
   // Drag state
   const dragIndexRef = useRef<number | null>(null);
@@ -192,13 +202,62 @@ const CategoriesPage = () => {
     setExistingImageUrl(null);
   };
 
-  const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("categories").delete().eq("id", id);
+  // Open merge dialog
+  const openMerge = async (cat: any) => {
+    const { count } = await supabase
+      .from("products")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId!)
+      .eq("category_id", cat.id);
+    setMergeProductCount(count || 0);
+    setMergeSource(cat);
+    setMergeTargetId("");
+  };
+
+  const handleMerge = async () => {
+    if (!mergeSource || !mergeTargetId || !tenantId) return;
+    setMerging(true);
+    const { error: moveError } = await supabase
+      .from("products")
+      .update({ category_id: mergeTargetId })
+      .eq("tenant_id", tenantId)
+      .eq("category_id", mergeSource.id);
+    if (moveError) {
+      toast.error("خطأ في نقل المنتجات", { description: moveError.message });
+      setMerging(false);
+      return;
+    }
+    const { error: deleteError } = await supabase.from("categories").delete().eq("id", mergeSource.id);
+    if (deleteError) {
+      toast.error("خطأ في حذف الفئة", { description: deleteError.message });
+    } else {
+      toast.success(`تم دمج "${mergeSource.name_ar}" ونقل ${mergeProductCount} منتج`);
+    }
+    setMerging(false);
+    setMergeSource(null);
+    fetchCategories();
+  };
+
+  // Delete with confirmation
+  const openDelete = async (cat: any) => {
+    const { count } = await supabase
+      .from("products")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId!)
+      .eq("category_id", cat.id);
+    setDeleteProductCount(count || 0);
+    setDeleteTarget(cat);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { error } = await supabase.from("categories").delete().eq("id", deleteTarget.id);
     if (error) toast.error("خطأ", { description: error.message });
     else {
-      toast.success("تم الحذف");
+      toast.success(`تم حذف "${deleteTarget.name_ar}"${deleteProductCount > 0 ? ` (${deleteProductCount} منتج بدون فئة)` : ""}`);
       fetchCategories();
     }
+    setDeleteTarget(null);
   };
 
   const toggleActive = async (id: string, current: boolean) => {
@@ -367,10 +426,13 @@ const CategoriesPage = () => {
                   )}
                 </div>
                 <Switch checked={cat.is_active} onCheckedChange={() => toggleActive(cat.id, cat.is_active)} />
+                <Button variant="ghost" size="icon" onClick={() => openMerge(cat)} title="دمج مع فئة أخرى">
+                  <Merge className="h-4 w-4" />
+                </Button>
                 <Button variant="ghost" size="icon" onClick={() => openEdit(cat)}>
                   <Pencil className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(cat.id)} className="text-destructive">
+                <Button variant="ghost" size="icon" onClick={() => openDelete(cat)} className="text-destructive">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </CardContent>
@@ -381,6 +443,77 @@ const CategoriesPage = () => {
           <p className="text-center text-muted-foreground py-12">لا توجد فئات — أضف فئات أو حمّل الافتراضيات</p>
         )}
       </div>
+
+      {/* Merge Dialog */}
+      <Dialog open={!!mergeSource} onOpenChange={(open) => !open && setMergeSource(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>دمج فئة "{mergeSource?.name_ar}"</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              سيتم نقل {mergeProductCount} منتج إلى الفئة المختارة ثم حذف "{mergeSource?.name_ar}"
+            </p>
+            <div className="space-y-2">
+              <Label>اختر الفئة المستهدفة</Label>
+              <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                {categories
+                  .filter(c => c.id !== mergeSource?.id)
+                  .map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => setMergeTargetId(c.id)}
+                      className={cn(
+                        "w-full flex items-center gap-3 p-3 rounded-lg border-2 text-right transition-all",
+                        mergeTargetId === c.id
+                          ? "border-primary bg-primary/5"
+                          : "border-transparent bg-muted/50 hover:bg-muted"
+                      )}
+                    >
+                      <span className="text-xl">{c.emoji}</span>
+                      <span className="font-medium text-sm">{c.name_ar}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setMergeSource(null)}>إلغاء</Button>
+              <Button
+                className="flex-1 gap-2"
+                onClick={handleMerge}
+                disabled={!mergeTargetId || merging}
+              >
+                {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Merge className="h-4 w-4" />}
+                دمج
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>حذف فئة "{deleteTarget?.name_ar}"؟</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {deleteProductCount > 0 ? (
+              <p className="text-sm text-muted-foreground">
+                ⚠️ يوجد {deleteProductCount} منتج في هذه الفئة. ستبقى المنتجات بدون فئة بعد الحذف.
+                <br />
+                💡 يمكنك دمج الفئة بدلاً من حذفها لنقل المنتجات.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">هذه الفئة فارغة وسيتم حذفها نهائياً.</p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setDeleteTarget(null)}>إلغاء</Button>
+              <Button variant="destructive" className="flex-1" onClick={confirmDelete}>حذف</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
