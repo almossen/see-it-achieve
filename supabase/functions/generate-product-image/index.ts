@@ -38,7 +38,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "dall-e-3",
-        prompt: `A single, large, realistic photograph of "${productName}" centered on a pure white background. The item must fill most of the frame, be extremely sharp and well-lit with soft studio lighting, showing vivid natural colors and clear details. No text, no labels, no decorations, no shadows — just the food item itself, easy to recognize at a glance by elderly people.`,
+        prompt: `Professional stock photo of fresh "${productName}". Style: exactly like a grocery store product catalog — a real unedited photograph taken with a DSLR camera in a professional studio. Pure white seamless background (#FFFFFF). Soft even lighting with no harsh shadows. The item is centered, filling 80% of the frame. Ultra sharp focus, natural true-to-life colors, no filters, no artistic effects, no illustration style, no painting look. The image should look identical to a real supermarket product photo that elderly people can instantly recognize.`,
         n: 1,
         size: "1024x1024",
         response_format: "b64_json",
