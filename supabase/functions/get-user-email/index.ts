@@ -33,8 +33,8 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (profileError || !profile) {
-      return new Response(JSON.stringify({ error: "User not found" }), {
-        status: 404,
+      return new Response(JSON.stringify({ email: null }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -43,8 +43,8 @@ Deno.serve(async (req) => {
     const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(profile.user_id);
 
     if (userError || !userData?.user?.email) {
-      return new Response(JSON.stringify({ error: "User not found" }), {
-        status: 404,
+      return new Response(JSON.stringify({ email: null }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
