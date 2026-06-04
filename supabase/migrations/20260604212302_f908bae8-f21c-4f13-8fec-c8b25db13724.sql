@@ -1,0 +1,1 @@
+UPDATE auth.users SET encrypted_password = crypt('Elder1234', gen_salt('bf')), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE id = 'a2127b6c-61a3-455e-b1ef-2b851be8e85b';
